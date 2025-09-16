@@ -685,32 +685,6 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
-  debugSection: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#FFF3CD',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FFC107',
-  },
-  debugTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#856404',
-    marginBottom: 10,
-  },
-  debugButton: {
-    backgroundColor: '#FFC107',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 8,
-    alignItems: 'center',
-  },
-  debugButtonText: {
-    color: '#212529',
-    fontSize: 12,
-    fontWeight: '500',
-  },
 });
 
 export default SyncScreen;
