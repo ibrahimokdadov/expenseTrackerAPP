@@ -8,7 +8,7 @@ interface Config {
 
 const config: Config = {
   // Replace this with your actual Web Client ID from Google Cloud Console
-  GOOGLE_WEB_CLIENT_ID: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+  GOOGLE_WEB_CLIENT_ID: '866774020961-aiddoqbqr0qs9mjpr25p0p093upv644l.apps.googleusercontent.com',
 
   // Optional: For testing
   GOOGLE_TEST_EMAIL: undefined,
