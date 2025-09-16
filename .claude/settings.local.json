@@ -27,7 +27,9 @@
       "Bash(xcopy:*)",
       "Bash(git remote add:*)",
       "Bash(git add:*)",
-      "Bash(del nul)"
+      "Bash(del nul)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

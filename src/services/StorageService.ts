@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Expense, Category, Subcategory, Loan, User} from '../types';
+import GoogleSheetsService from './GoogleSheetsService';
+import GoogleAuthService from './GoogleAuthService';
 
 const EXPENSES_KEY = '@expenses';
 const CATEGORIES_KEY = '@categories';
@@ -8,6 +10,10 @@ const USERS_KEY = '@users';
 const CURRENT_USER_KEY = '@current_user';
 
 export class StorageService {
+  private static autoBackupEnabled = false;
+  private static backupQueue: (() => Promise<void>)[] = [];
+  private static isProcessingBackup = false;
+
   static async init() {
     // Initialize categories with predefined ones
     const categories = await this.getCategories();
@@ -24,6 +30,13 @@ export class StorageService {
         isDefault: true,
       });
       await AsyncStorage.setItem(CURRENT_USER_KEY, 'default_user');
+    }
+
+    // Check if user is signed in and enable auto backup
+    const isSignedIn = await GoogleAuthService.isSignedIn();
+    if (isSignedIn) {
+      this.autoBackupEnabled = true;
+      await GoogleSheetsService.initialize();
     }
   }
 
@@ -74,6 +87,10 @@ export class StorageService {
       };
       expenses.push(newExpense);
       await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+
+      // Trigger auto backup
+      this.scheduleBackup();
+
       return newExpense;
     } catch (error) {
       console.error('Error saving expense:', error);
@@ -98,6 +115,10 @@ export class StorageService {
       if (index !== -1) {
         expenses[index] = {...expenses[index], ...updates};
         await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+
+        // Trigger auto backup
+        this.scheduleBackup();
+
         return expenses[index];
       }
       throw new Error('Expense not found');
@@ -112,6 +133,9 @@ export class StorageService {
       const expenses = await this.getExpenses();
       const filtered = expenses.filter(e => e.id !== id);
       await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(filtered));
+
+      // Trigger auto backup
+      this.scheduleBackup();
     } catch (error) {
       console.error('Error deleting expense:', error);
       throw error;
@@ -195,6 +219,10 @@ export class StorageService {
       };
       loans.push(newLoan);
       await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(loans));
+
+      // Trigger auto backup
+      this.scheduleBackup();
+
       return newLoan;
     } catch (error) {
       console.error('Error saving loan:', error);
@@ -305,6 +333,97 @@ export class StorageService {
     } catch (error) {
       console.error('Error clearing data:', error);
       throw error;
+    }
+  }
+
+  // Auto Backup Methods
+  static async enableAutoBackup() {
+    this.autoBackupEnabled = true;
+    await GoogleSheetsService.initialize();
+  }
+
+  static async disableAutoBackup() {
+    this.autoBackupEnabled = false;
+  }
+
+  static isAutoBackupEnabled() {
+    return this.autoBackupEnabled;
+  }
+
+  private static scheduleBackup() {
+    if (!this.autoBackupEnabled) return;
+
+    // Add to backup queue
+    this.backupQueue.push(async () => {
+      try {
+        const [expenses, loans, categories] = await Promise.all([
+          this.getExpenses(),
+          this.getLoans(),
+          this.getCategories(),
+        ]);
+
+        await GoogleSheetsService.syncAll(expenses, loans, categories);
+        console.log('Auto backup completed successfully');
+      } catch (error) {
+        console.error('Auto backup failed:', error);
+      }
+    });
+
+    // Process queue if not already processing
+    if (!this.isProcessingBackup) {
+      this.processBackupQueue();
+    }
+  }
+
+  private static async processBackupQueue() {
+    if (this.isProcessingBackup || this.backupQueue.length === 0) return;
+
+    this.isProcessingBackup = true;
+
+    // Wait a bit to batch multiple changes
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Process all pending backups (only execute the last one)
+    while (this.backupQueue.length > 0) {
+      const backup = this.backupQueue.pop();
+      if (backup && this.backupQueue.length === 0) {
+        await backup();
+      }
+    }
+
+    this.isProcessingBackup = false;
+  }
+
+  static async manualBackup(): Promise<boolean> {
+    try {
+      const [expenses, loans, categories] = await Promise.all([
+        this.getExpenses(),
+        this.getLoans(),
+        this.getCategories(),
+      ]);
+
+      return await GoogleSheetsService.syncAll(expenses, loans, categories);
+    } catch (error) {
+      console.error('Manual backup failed:', error);
+      return false;
+    }
+  }
+
+  static async restoreFromBackup(): Promise<boolean> {
+    try {
+      const data = await GoogleSheetsService.restoreFromBackup();
+      if (!data) return false;
+
+      // Save restored data
+      await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
+      await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(data.loans));
+      await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(data.categories));
+
+      console.log('Data restored successfully from backup');
+      return true;
+    } catch (error) {
+      console.error('Failed to restore from backup:', error);
+      return false;
     }
   }
 }

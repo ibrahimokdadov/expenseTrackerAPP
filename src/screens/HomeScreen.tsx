@@ -15,9 +15,12 @@ import {useFocusEffect} from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
 import {StorageService} from '../services/StorageService';
 import {CurrencyService} from '../services/CurrencyService';
+import GoogleAuthService from '../services/GoogleAuthService';
+import GoogleSheetsService from '../services/GoogleSheetsService';
 import {Expense, Category, Loan, Currency} from '../types';
 import {useTheme} from '../contexts/ThemeContext';
 import DonutChart from '../components/DonutChart';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
 const {width, height} = Dimensions.get('window');
 
@@ -37,6 +40,9 @@ const HomeScreen = ({navigation}: any) => {
   const [timePeriod, setTimePeriod] = useState<'thisMonth' | 'lastMonth' | 'thisYear'>('thisMonth');
   const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
   const [chartData, setChartData] = useState<{name: string; value: number; color: string}[]>([]);
+  const [googleUser, setGoogleUser] = useState<any>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -57,6 +63,14 @@ const HomeScreen = ({navigation}: any) => {
   }, []);
 
   const loadData = async () => {
+    // Check Google sign-in status
+    const user = await GoogleAuthService.getCurrentUser();
+    setGoogleUser(user);
+
+    // Get last sync time
+    const syncTime = await GoogleSheetsService.getLastSyncTime();
+    setLastSyncTime(syncTime);
+
     const [expenses, cats, allLoans, currency] = await Promise.all([
       StorageService.getExpenses(),
       StorageService.getCategories(),
@@ -256,13 +270,44 @@ const HomeScreen = ({navigation}: any) => {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>👋 Morning</Text>
-            <Text style={styles.userName}>Welcome back!</Text>
+            <Text style={styles.userName}>
+              {googleUser ? googleUser.name : 'Welcome back!'}
+            </Text>
           </View>
-          <TouchableOpacity
-            style={styles.profileButton}
-            onPress={() => navigation.navigate('Settings')}>
-            <Text style={styles.profileEmoji}>👤</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            {googleUser && (
+              <TouchableOpacity
+                style={styles.syncButton}
+                onPress={async () => {
+                  setIsSyncing(true);
+                  const success = await StorageService.manualBackup();
+                  setIsSyncing(false);
+                  if (success) {
+                    const syncTime = await GoogleSheetsService.getLastSyncTime();
+                    setLastSyncTime(syncTime);
+                  }
+                }}>
+                {isSyncing ? (
+                  <Text style={styles.syncIcon}>🔄</Text>
+                ) : (
+                  <Icon
+                    name="backup"
+                    size={20}
+                    color={StorageService.isAutoBackupEnabled() ? '#4CAF50' : '#8E8E93'}
+                  />
+                )}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.profileButton}
+              onPress={() => navigation.navigate('Settings')}>
+              {googleUser ? (
+                <Icon name="account-circle" size={24} color="#6B5FFF" />
+              ) : (
+                <Text style={styles.profileEmoji}>👤</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         <Animated.View
@@ -618,6 +663,22 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     color: '#1C1C1E',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  syncButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F2F2F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  syncIcon: {
+    fontSize: 16,
   },
   profileButton: {
     width: 40,
