@@ -60,9 +60,10 @@ export class GoogleSheetsService {
         const sheetExists = await this.verifySheetExists();
         if (sheetExists) {
           console.log('[GoogleSheetsService] Sheet verified and accessible');
+          console.log('[GoogleSheetsService] Using sheet URL:', this.sheetInfo.spreadsheetUrl);
           return true;
         } else {
-          console.log('[GoogleSheetsService] Sheet no longer exists or is not accessible, creating new one...');
+          console.log('[GoogleSheetsService] Saved sheet no longer exists or is not accessible');
           await AsyncStorage.removeItem('@expense_tracker_sheet');
           this.sheetInfo = null;
         }
@@ -562,6 +563,28 @@ export class GoogleSheetsService {
     if (savedSheet) {
       const info = JSON.parse(savedSheet);
       return info.spreadsheetUrl;
+    }
+
+    return null;
+  }
+
+  static async getSheetInfo(): Promise<{id: string, url: string, created: string} | null> {
+    if (this.sheetInfo) {
+      return {
+        id: this.sheetInfo.spreadsheetId,
+        url: this.sheetInfo.spreadsheetUrl,
+        created: this.sheetInfo.createdAt,
+      };
+    }
+
+    const savedSheet = await AsyncStorage.getItem('@expense_tracker_sheet');
+    if (savedSheet) {
+      const info = JSON.parse(savedSheet);
+      return {
+        id: info.spreadsheetId,
+        url: info.spreadsheetUrl,
+        created: info.createdAt,
+      };
     }
 
     return null;

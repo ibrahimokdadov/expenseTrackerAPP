@@ -378,7 +378,9 @@ const SyncScreen = ({navigation}: any) => {
                       Alert.alert('Debug', success ? 'Sheets reinitialized' : 'Failed to initialize');
                       if (success) {
                         const url = await GoogleSheetsService.getSheetUrl();
+                        const info = await GoogleSheetsService.getSheetInfo();
                         setSheetUrl(url);
+                        setSheetInfo(info);
                       }
                     } catch (error) {
                       Alert.alert('Error', 'Failed to reinitialize');
