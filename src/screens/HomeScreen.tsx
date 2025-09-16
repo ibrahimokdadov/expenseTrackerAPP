@@ -218,44 +218,105 @@ const HomeScreen = ({navigation}: any) => {
     return ((monthlyTotal - lastMonthTotal) / lastMonthTotal * 100).toFixed(0);
   };
 
+  const getCategoryLetter = (categoryName: string | undefined) => {
+    if (!categoryName || categoryName.length === 0) return '?';
+    return categoryName.charAt(0).toUpperCase();
+  };
+
   const ExpenseItem = ({expense}: {expense: Expense}) => {
     const category = categories.find(c => c.id === expense.category);
     const expenseDate = new Date(expense.date);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
+    const scaleAnim = useRef(new Animated.Value(1)).current;
 
     let dateDisplay = '';
+    let isRecent = false;
     if (expenseDate.toDateString() === today.toDateString()) {
       dateDisplay = 'Today';
+      isRecent = true;
     } else if (expenseDate.toDateString() === yesterday.toDateString()) {
       dateDisplay = 'Yesterday';
+      isRecent = true;
     } else {
       dateDisplay = expenseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
 
+    const handlePressIn = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 0.98,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 3,
+        tension: 40,
+        useNativeDriver: true,
+      }).start();
+    };
+
     return (
-      <TouchableOpacity style={styles.expenseItem}>
-        <View style={styles.expenseIcon}>
-          <Text style={styles.expenseIconText}>
-            {category?.name === 'Food' ? '🛒' :
-             category?.name === 'Transport' ? '🚗' :
-             category?.name === 'Entertainment' ? '🎮' :
-             category?.name === 'Health' ? '💊' :
-             category?.name === 'Shopping' ? '🛍️' : '💳'}
-          </Text>
-        </View>
-        <View style={styles.expenseDetails}>
-          <Text style={styles.expenseCategory}>{category?.name || 'Other'}</Text>
-          <Text style={styles.expenseDescription}>
-            {expense.description || `${category?.name} expense`}
-          </Text>
-        </View>
-        <View style={styles.expenseRight}>
-          <Text style={styles.expenseAmount}>-{getCurrencySymbol()}{formatAmount(expense.amount)}</Text>
-          <Text style={styles.expenseDate}>{dateDisplay}</Text>
-        </View>
-      </TouchableOpacity>
+      <Animated.View style={[
+        styles.expenseCard,
+        { transform: [{ scale: scaleAnim }] }
+      ]}>
+        <TouchableOpacity
+          style={styles.expenseCardContent}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          activeOpacity={0.9}>
+
+          <View style={styles.expenseLeft}>
+            <View style={[
+              styles.expenseIconModern,
+              { backgroundColor: category?.color ? category.color + '15' : '#F5F5FA' }
+            ]}>
+              <Text style={[
+                styles.expenseIconLetter,
+                { color: category?.color || '#6B5FFF' }
+              ]}>
+                {getCategoryLetter(category?.name)}
+              </Text>
+              {isRecent && (
+                <View style={[styles.recentBadge, { backgroundColor: category?.color || '#6B5FFF' }]} />
+              )}
+            </View>
+
+            <View style={styles.expenseInfo}>
+              <Text style={styles.expenseCategoryModern}>
+                {category?.name || 'Other'}
+              </Text>
+              <Text style={styles.expenseDescriptionModern} numberOfLines={1}>
+                {expense.description || 'No description'}
+              </Text>
+              <View style={styles.expenseMetaRow}>
+                <Text style={styles.expenseDateModern}>
+                  {dateDisplay}
+                </Text>
+                {expense.syncStatus === 'synced' && (
+                  <Text style={styles.syncedIndicator}>•</Text>
+                )}
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.expenseAmountContainer}>
+            <Text style={[
+              styles.expenseAmountModern,
+              { color: category?.color || '#FF3B30' }
+            ]}>
+              -{getCurrencySymbol()}{formatAmount(expense.amount)}
+            </Text>
+            <View style={styles.expenseArrow}>
+              <Text style={styles.expenseArrowText}>›</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
     );
   };
 
@@ -449,23 +510,62 @@ const HomeScreen = ({navigation}: any) => {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Expense List</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('ExpenseList')}>
-              <Text style={styles.seeAll}>See all →</Text>
-            </TouchableOpacity>
+            <View>
+              <Text style={styles.sectionTitle}>Recent Transactions</Text>
+              <Text style={styles.sectionSubtitle}>
+                {recentExpenses.length > 0 ? `${recentExpenses.length} recent expenses` : 'No transactions yet'}
+              </Text>
+            </View>
+            {recentExpenses.length > 0 && (
+              <TouchableOpacity
+                style={styles.seeAllButton}
+                onPress={() => navigation.navigate('ExpenseList')}>
+                <Text style={styles.seeAll}>View All</Text>
+                <Text style={styles.seeAllArrow}>→</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.expensesList}>
             {recentExpenses.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>📝</Text>
-                <Text style={styles.emptyText}>No expenses yet</Text>
-                <Text style={styles.emptySubtext}>Tap + to add your first expense</Text>
+              <View style={styles.emptyStateModern}>
+                <LinearGradient
+                  colors={['#F0EFFF', '#F8F7FF']}
+                  style={styles.emptyStateCard}>
+                  <View style={styles.emptyIconContainer}>
+                    <Text style={styles.emptyIconModern}>💸</Text>
+                  </View>
+                  <Text style={styles.emptyTextModern}>Start Tracking Expenses</Text>
+                  <Text style={styles.emptySubtextModern}>
+                    Add your first expense to see insights
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.addFirstExpenseButton}
+                    onPress={() => navigation.navigate('AddExpense')}>
+                    <LinearGradient
+                      colors={['#6B5FFF', '#8A7FFF']}
+                      style={styles.addFirstExpenseGradient}>
+                      <Text style={styles.addFirstExpenseText}>Add Expense</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </LinearGradient>
               </View>
             ) : (
               <>
-                {recentExpenses.map((expense) => (
-                  <ExpenseItem key={expense.id} expense={expense} />
+                {recentExpenses.map((expense, index) => (
+                  <Animated.View
+                    key={expense.id}
+                    style={{
+                      opacity: fadeAnim,
+                      transform: [{
+                        translateY: slideAnim.interpolate({
+                          inputRange: [0, 30],
+                          outputRange: [0, index * 10],
+                        }),
+                      }],
+                    }}>
+                    <ExpenseItem expense={expense} />
+                  </Animated.View>
                 ))}
               </>
             )}
@@ -851,87 +951,196 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#1C1C1E',
+    letterSpacing: 0.3,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#8E8E93',
+    marginTop: 2,
+  },
+  seeAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5FA',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
   seeAll: {
+    fontSize: 13,
+    color: '#6B5FFF',
+    fontWeight: '700',
+    marginRight: 4,
+  },
+  seeAllArrow: {
     fontSize: 14,
     color: '#6B5FFF',
     fontWeight: '600',
   },
   expensesList: {
+    paddingHorizontal: 4,
+  },
+  expenseCard: {
+    marginBottom: 12,
+  },
+  expenseCardContent: {
     backgroundColor: 'white',
     borderRadius: 20,
     padding: 16,
-  },
-  expenseItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F2F2F7',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F5F5FA',
   },
-  expenseItem: {
+  expenseLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-  },
-  expenseIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#F2F2F7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  expenseIconText: {
-    fontSize: 20,
-  },
-  expenseDetails: {
     flex: 1,
   },
-  expenseCategory: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1C1C1E',
-    marginBottom: 2,
-  },
-  expenseDescription: {
-    fontSize: 12,
-    color: '#8E8E93',
-  },
-  expenseRight: {
-    alignItems: 'flex-end',
-  },
-  expenseAmount: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF3B30',
-    marginBottom: 2,
-  },
-  expenseDate: {
-    fontSize: 12,
-    color: '#8E8E93',
-  },
-  emptyState: {
+  expenseIconModern: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
-    paddingVertical: 32,
+    justifyContent: 'center',
+    marginRight: 14,
+    position: 'relative',
   },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 12,
+  expenseIconLetter: {
+    fontSize: 20,
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
+  recentBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  expenseInfo: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  expenseCategoryModern: {
+    fontSize: 15,
+    fontWeight: '700',
     color: '#1C1C1E',
-    marginBottom: 4,
+    marginBottom: 3,
+    letterSpacing: 0.2,
   },
-  emptySubtext: {
+  expenseDescriptionModern: {
+    fontSize: 13,
+    color: '#8E8E93',
+    marginBottom: 4,
+    lineHeight: 16,
+  },
+  expenseMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  expenseDateModern: {
+    fontSize: 11,
+    color: '#AEAEB2',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  syncedIndicator: {
+    fontSize: 10,
+    color: '#34C759',
+    marginLeft: 6,
+  },
+  expenseAmountContainer: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+  },
+  expenseAmountModern: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginRight: 8,
+  },
+  expenseArrow: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F5F5FA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expenseArrowText: {
+    fontSize: 18,
+    color: '#C7C7CC',
+    fontWeight: 'bold',
+  },
+  emptyStateModern: {
+    marginTop: 8,
+  },
+  emptyStateCard: {
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E8E7FF',
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    shadowColor: '#6B5FFF',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  emptyIconModern: {
+    fontSize: 40,
+  },
+  emptyTextModern: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1C1C1E',
+    marginBottom: 8,
+    letterSpacing: 0.3,
+  },
+  emptySubtextModern: {
     fontSize: 14,
     color: '#8E8E93',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  addFirstExpenseButton: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  addFirstExpenseGradient: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  addFirstExpenseText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '700',
   },
   spendingSection: {
     paddingHorizontal: 20,

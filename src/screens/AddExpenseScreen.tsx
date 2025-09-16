@@ -111,17 +111,9 @@ const AddExpenseScreen = ({navigation}: any) => {
     return curr?.symbol || '$';
   };
 
-  const getCategoryIcon = (categoryName: string) => {
-    switch(categoryName) {
-      case 'Food': return '🍔';
-      case 'Transport': return '🚗';
-      case 'Shopping': return '🛍️';
-      case 'Entertainment': return '🎮';
-      case 'Health': return '💊';
-      case 'Education': return '📚';
-      case 'Bills': return '📄';
-      default: return '💰';
-    }
+  const getCategoryLetter = (categoryName: string) => {
+    if (!categoryName || categoryName.length === 0) return '?';
+    return categoryName.charAt(0).toUpperCase();
   };
 
   const predefinedAmounts = ['10', '25', '50', '100', '250', '500'];
@@ -132,40 +124,77 @@ const AddExpenseScreen = ({navigation}: any) => {
       transparent={true}
       animationType="slide"
       onRequestClose={() => setShowCategoryModal(false)}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setShowCategoryModal(false)}>
+        <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+          <View style={styles.modalHandle} />
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Choose Category</Text>
-            <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
+            <Text style={styles.modalTitle}>Select Category</Text>
+            <TouchableOpacity
+              style={styles.closeButtonContainer}
+              onPress={() => setShowCategoryModal(false)}>
               <Text style={styles.closeButton}>✕</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.categoryGrid}>
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[
-                  styles.categoryOption,
-                  selectedCategory === cat.id && styles.selectedCategoryOption,
-                ]}
-                onPress={() => {
-                  setSelectedCategory(cat.id);
-                  setShowCategoryModal(false);
-                }}>
-                <View style={[styles.categoryIconBox, {backgroundColor: cat.color + '20'}]}>
-                  <Text style={styles.categoryIcon}>{getCategoryIcon(cat.name)}</Text>
-                </View>
-                <Text style={[
-                  styles.categoryOptionText,
-                  selectedCategory === cat.id && styles.selectedCategoryText,
-                ]}>
-                  {cat.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScrollContent}>
+            <View style={styles.categoryGrid}>
+              {categories.map((cat) => (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[
+                    styles.categoryOption,
+                    selectedCategory === cat.id && styles.selectedCategoryOption,
+                  ]}
+                  onPress={() => {
+                    setSelectedCategory(cat.id);
+                    setShowCategoryModal(false);
+                  }}
+                  activeOpacity={0.7}>
+                  <Animated.View
+                    style={[
+                      styles.categoryIconBox,
+                      {
+                        backgroundColor: selectedCategory === cat.id
+                          ? cat.color
+                          : cat.color + '15',
+                        borderColor: selectedCategory === cat.id
+                          ? cat.color
+                          : 'transparent',
+                        transform: [
+                          {
+                            scale: selectedCategory === cat.id ? 1.05 : 1,
+                          },
+                        ],
+                      },
+                    ]}>
+                    <Text style={[
+                      styles.categoryLetter,
+                      selectedCategory === cat.id && styles.selectedCategoryLetter,
+                    ]}>
+                      {getCategoryLetter(cat.name)}
+                    </Text>
+                  </Animated.View>
+                  <Text style={[
+                    styles.categoryOptionText,
+                    selectedCategory === cat.id && styles.selectedCategoryText,
+                  ]}>
+                    {cat.name}
+                  </Text>
+                  {selectedCategory === cat.id && (
+                    <View style={styles.selectedCheckmark}>
+                      <Text style={styles.checkmarkText}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
         </View>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 
@@ -224,16 +253,26 @@ const AddExpenseScreen = ({navigation}: any) => {
             <Text style={styles.sectionLabel}>Category</Text>
             <TouchableOpacity
               style={styles.categorySelector}
-              onPress={() => setShowCategoryModal(true)}>
+              onPress={() => setShowCategoryModal(true)}
+              activeOpacity={0.7}>
               {currentCategory ? (
                 <View style={styles.selectedCategory}>
-                  <View style={[styles.categoryDot, {backgroundColor: currentCategory.color}]} />
+                  <View style={[styles.categoryIconSmall, {backgroundColor: currentCategory.color + '20'}]}>
+                    <Text style={[styles.categoryLetterSmall, {color: currentCategory.color}]}>{getCategoryLetter(currentCategory.name)}</Text>
+                  </View>
                   <Text style={styles.selectedCategoryName}>{currentCategory.name}</Text>
                 </View>
               ) : (
-                <Text style={styles.categoryPlaceholder}>Select category</Text>
+                <View style={styles.selectedCategory}>
+                  <View style={styles.categoryIconPlaceholder}>
+                    <Text style={styles.categoryLetterSmall}>?</Text>
+                  </View>
+                  <Text style={styles.categoryPlaceholder}>Select category</Text>
+                </View>
               )}
-              <Text style={styles.chevron}>›</Text>
+              <View style={styles.chevronContainer}>
+                <Text style={styles.chevron}>›</Text>
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -379,19 +418,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F2F2F7',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: '#F8F8FA',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8E8ED',
   },
   selectedCategory: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
-  categoryDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 8,
+  categoryIconSmall: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  categoryIconPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    backgroundColor: '#F0F0F5',
+    borderWidth: 1.5,
+    borderColor: '#E0E0E5',
+  },
+  categoryLetterSmall: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#666',
+    textTransform: 'uppercase',
   },
   selectedCategoryName: {
     fontSize: 16,
@@ -400,11 +463,20 @@ const styles = StyleSheet.create({
   },
   categoryPlaceholder: {
     fontSize: 16,
-    color: '#C7C7CC',
+    color: '#999',
+  },
+  chevronContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#E8E8ED',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chevron: {
-    fontSize: 24,
-    color: '#C7C7CC',
+    fontSize: 20,
+    color: '#666',
+    fontWeight: 'bold',
   },
   descriptionSection: {
     backgroundColor: 'white',
@@ -508,15 +580,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F7',
   },
   categoryIconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
-  categoryIcon: {
-    fontSize: 28,
+  categoryLetter: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#333',
+    textTransform: 'uppercase',
+  },
+  selectedCategoryLetter: {
+    color: 'white',
+    fontWeight: '800',
   },
   categoryOptionText: {
     fontSize: 12,
@@ -525,7 +606,23 @@ const styles = StyleSheet.create({
   },
   selectedCategoryText: {
     color: '#6B5FFF',
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  selectedCheckmark: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#6B5FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkmarkText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 
