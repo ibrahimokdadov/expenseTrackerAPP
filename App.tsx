@@ -11,6 +11,7 @@ import LoansScreen from './src/screens/LoansScreen';
 import CategoryDetailsScreen from './src/screens/CategoryDetailsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import {StorageService} from './src/services/StorageService';
+import GoogleAuthService from './src/services/GoogleAuthService';
 import {ThemeProvider, useTheme} from './src/contexts/ThemeContext';
 
 const Stack = createStackNavigator();
@@ -19,7 +20,35 @@ function AppContent(): React.JSX.Element {
   const {colors} = useTheme();
 
   useEffect(() => {
-    StorageService.init();
+    // Initialize services
+    const initializeApp = async () => {
+      try {
+        console.log('[App] Initializing services...');
+
+        // Initialize storage
+        await StorageService.init();
+        console.log('[App] StorageService initialized');
+
+        // Configure Google Sign-In
+        try {
+          await GoogleAuthService.configure();
+          console.log('[App] GoogleAuthService configured');
+
+          // Check if user is signed in
+          const isSignedIn = await GoogleAuthService.isSignedIn();
+          if (isSignedIn) {
+            console.log('[App] User is already signed in');
+            await StorageService.enableAutoBackup();
+          }
+        } catch (authError) {
+          console.log('[App] Google Sign-In not available, continuing without it');
+        }
+      } catch (error) {
+        console.error('[App] Initialization error:', error);
+      }
+    };
+
+    initializeApp();
   }, []);
 
   return (

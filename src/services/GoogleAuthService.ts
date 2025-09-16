@@ -213,42 +213,55 @@ class GoogleAuthService {
         return null;
       }
 
-      // First check if we have a stored access token
-      const user = await this.getCurrentUser();
-      if (user && user.accessToken) {
-        console.log('[GoogleAuth] Using stored access token');
-        return user.accessToken;
-      }
-
-      // Try to get fresh tokens
+      // Always try to get fresh tokens first
       try {
+        console.log('[GoogleAuth] Attempting to get fresh tokens...');
         const tokens = await GoogleSignin.getTokens();
         console.log('[GoogleAuth] Got tokens:', {
           hasAccessToken: !!tokens.accessToken,
           hasIdToken: !!tokens.idToken,
+          accessTokenLength: tokens.accessToken?.length || 0,
         });
 
         if (tokens.accessToken) {
           // Update stored profile with new token
-          if (this.currentUser) {
-            this.currentUser.accessToken = tokens.accessToken;
-            await this.saveUserProfile(this.currentUser);
+          const currentUser = await this.getCurrentUser();
+          if (currentUser) {
+            currentUser.accessToken = tokens.accessToken;
+            await this.saveUserProfile(currentUser);
           }
           return tokens.accessToken;
         }
-      } catch (tokenError) {
+      } catch (tokenError: any) {
         console.log('[GoogleAuth] getTokens failed:', tokenError);
+        console.log('[GoogleAuth] Error details:', tokenError.message, tokenError.code);
+
+        // If getTokens fails, try signing in silently to refresh
+        try {
+          console.log('[GoogleAuth] Attempting silent sign-in to refresh tokens...');
+          const userInfo = await GoogleSignin.signInSilently();
+          const newTokens = await GoogleSignin.getTokens();
+
+          if (newTokens.accessToken) {
+            console.log('[GoogleAuth] Got new access token after silent sign-in');
+            const profile = await this.processUserInfo(userInfo);
+            profile.accessToken = newTokens.accessToken;
+            await this.saveUserProfile(profile);
+            return newTokens.accessToken;
+          }
+        } catch (silentSignInError) {
+          console.error('[GoogleAuth] Silent sign-in also failed:', silentSignInError);
+        }
       }
 
-      // If we can't get access token, try to use idToken as fallback
-      // Note: This won't work for Sheets API, but helps us debug
-      if (user && user.idToken) {
-        console.warn('[GoogleAuth] No access token available, only idToken');
-        console.warn('[GoogleAuth] You may need to sign out and sign in again');
-        return null; // Return null because idToken won't work for Sheets API
+      // Last resort: check stored token
+      const user = await this.getCurrentUser();
+      if (user && user.accessToken) {
+        console.warn('[GoogleAuth] Using potentially stale stored access token');
+        return user.accessToken;
       }
 
-      console.error('[GoogleAuth] No tokens available');
+      console.error('[GoogleAuth] No tokens available - user may need to sign in again');
       return null;
     } catch (error) {
       console.error('[GoogleAuth] Failed to get access token:', error);

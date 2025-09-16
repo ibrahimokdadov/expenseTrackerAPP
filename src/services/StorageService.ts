@@ -73,6 +73,34 @@ export class StorageService {
     return defaultCategories;
   }
 
+  // Bulk Save Methods
+  static async saveAllExpenses(expenses: Expense[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+    } catch (error) {
+      console.error('Failed to save all expenses:', error);
+      throw error;
+    }
+  }
+
+  static async saveAllLoans(loans: Loan[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(loans));
+    } catch (error) {
+      console.error('Failed to save all loans:', error);
+      throw error;
+    }
+  }
+
+  static async saveAllCategories(categories: Category[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+    } catch (error) {
+      console.error('Failed to save all categories:', error);
+      throw error;
+    }
+  }
+
   // Expense Management
   static async saveExpense(expense: Omit<Expense, 'id' | 'timestamp' | 'localId' | 'syncStatus'>) {
     try {

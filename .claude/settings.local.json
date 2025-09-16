@@ -29,7 +29,17 @@
       "Bash(git add:*)",
       "Bash(del nul)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(keytool:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -list -v -keystore androidappdebug.keystore -alias androiddebugkey -storepass android -keypass android)",
+      "Bash(netstat:*)",
+      "Bash(verify-android-setup.bat)",
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -list -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android)",
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -list -v -keystore \"android\\app\\debug.keystore\" -alias androiddebugkey -storepass android -keypass android)",
+      "Bash(del:*)",
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -genkey -v -keystore androidappdebug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname \"CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US\")",
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname \"CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US\")"
     ],
     "deny": [],
     "ask": []
