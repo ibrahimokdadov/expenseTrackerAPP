@@ -22,6 +22,7 @@ class GoogleAuthService {
   private isConfigured = false;
   private authInProgress = false;
   private tokenPromise: Promise<string | null> | null = null;
+  private signInSilentlyPromise: Promise<UserProfile | null> | null = null;
 
   private constructor() {}
 
@@ -76,30 +77,13 @@ class GoogleAuthService {
       const isSignedIn = await GoogleSignin.isSignedIn();
       if (isSignedIn) {
         console.log('[GoogleAuth] User already signed in, using silent sign in');
-        const userInfo = await GoogleSignin.signInSilently();
-        console.log('[GoogleAuth] Silent sign in userInfo:', JSON.stringify({
-          id: userInfo.user.id,
-          email: userInfo.user.email,
-          idToken: userInfo.idToken ? 'present' : 'missing',
-          serverAuthCode: userInfo.serverAuthCode ? 'present' : 'missing',
-        }));
-
-        let tokens;
-        try {
-          tokens = await GoogleSignin.getTokens();
-          console.log('[GoogleAuth] Silent tokens:', {
-            accessToken: tokens.accessToken ? 'present' : 'missing',
-            idToken: tokens.idToken ? 'present' : 'missing',
-          });
-        } catch (tokenError) {
-          console.error('[GoogleAuth] Silent token error:', tokenError);
-          tokens = { accessToken: '', idToken: userInfo.idToken || '' };
+        // Use our wrapped signInSilently method to avoid conflicts
+        const profile = await this.signInSilently();
+        if (profile) {
+          return profile;
         }
-
-        const profile = await this.processUserInfo(userInfo);
-        profile.accessToken = tokens.accessToken;
-        await this.saveUserProfile(profile);
-        return profile;
+        // If silent sign-in failed, continue to regular sign-in
+        console.log('[GoogleAuth] Silent sign-in failed, proceeding to regular sign-in');
       }
 
       // Check Play Services
@@ -153,26 +137,38 @@ class GoogleAuthService {
   }
 
   async signInSilently(): Promise<UserProfile | null> {
-    // Prevent concurrent silent sign-in attempts
-    if (this.authInProgress) {
-      console.log('[GoogleAuth] Silent sign-in already in progress, skipping');
-      return this.getCurrentUser();
+    // If a silent sign-in is already in progress, return the existing promise
+    if (this.signInSilentlyPromise) {
+      console.log('[GoogleAuth] Silent sign-in already in progress, waiting for existing promise');
+      return await this.signInSilentlyPromise;
     }
 
-    this.authInProgress = true;
+    // Create new promise for this sign-in attempt
+    this.signInSilentlyPromise = this._signInSilentlyInternal();
+
     try {
+      const result = await this.signInSilentlyPromise;
+      return result;
+    } finally {
+      // Clear the promise after completion
+      this.signInSilentlyPromise = null;
+    }
+  }
+
+  private async _signInSilentlyInternal(): Promise<UserProfile | null> {
+    try {
+      console.log('[GoogleAuth] Starting silent sign-in...');
       await this.configure();
       const userInfo = await GoogleSignin.signInSilently();
       const tokens = await GoogleSignin.getTokens();
       const profile = await this.processUserInfo(userInfo);
       profile.accessToken = tokens.accessToken;
       await this.saveUserProfile(profile);
+      console.log('[GoogleAuth] Silent sign-in successful');
       return profile;
     } catch (error) {
       console.log('[GoogleAuth] Silent sign in failed:', error);
       return null;
-    } finally {
-      this.authInProgress = false;
     }
   }
 
@@ -266,28 +262,12 @@ class GoogleAuthService {
         console.log('[GoogleAuth] getTokens failed:', tokenError);
         console.log('[GoogleAuth] Error details:', tokenError.message, tokenError.code);
 
-        // Only try silent sign-in if we're not already doing auth
-        if (!this.authInProgress) {
-          this.authInProgress = true;
-          try {
-            console.log('[GoogleAuth] Attempting silent sign-in to refresh tokens...');
-            const userInfo = await GoogleSignin.signInSilently();
-            const newTokens = await GoogleSignin.getTokens();
-
-            if (newTokens.accessToken) {
-              console.log('[GoogleAuth] Got new access token after silent sign-in');
-              const profile = await this.processUserInfo(userInfo);
-              profile.accessToken = newTokens.accessToken;
-              await this.saveUserProfile(profile);
-              return newTokens.accessToken;
-            }
-          } catch (silentSignInError) {
-            console.error('[GoogleAuth] Silent sign-in failed:', silentSignInError);
-          } finally {
-            this.authInProgress = false;
-          }
-        } else {
-          console.log('[GoogleAuth] Auth already in progress, skipping silent sign-in');
+        // Try refreshing through our safe signInSilently method
+        console.log('[GoogleAuth] Attempting to refresh tokens via signInSilently...');
+        const profile = await this.signInSilently();
+        if (profile && profile.accessToken) {
+          console.log('[GoogleAuth] Got new access token after silent sign-in');
+          return profile.accessToken;
         }
       }
 
