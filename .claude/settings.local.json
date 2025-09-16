@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx:*)",
+      "Bash(adb:*)",
+      "Bash(node:*)",
+      "Bash(set JAVA_HOME=C:Program FilesAndroidAndroid Studiojbr)",
+      "Bash(npm uninstall:*)",
+      "Read(//c/**)",
+      "Bash(dir /s)",
+      "Bash(findstr:*)",
+      "Bash(powershell:*)",
+      "Bash(./gradlew:*)",
+      "Bash(set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\")",
+      "Bash(gradlew:*)",
+      "Bash(rm:*)",
+      "Bash(where java)",
+      "Bash(\"%JAVA_HOME%\\bin\\java\" -version)",
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\java\" -version)",
+      "Bash(run-android-with-java.bat)",
+      "Bash(npm start)",
+      "Bash(timeout:*)",
+      "Bash(taskkill:*)",
+      "Bash(dir androidappsrcmainassetsfonts)",
+      "Bash(dir:*)",
+      "Bash(xcopy:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(del nul)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
