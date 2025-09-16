@@ -21,8 +21,27 @@ export interface SyncResult {
 
 export class GoogleSheetsService {
   private static sheetInfo: SheetInfo | null = null;
+  private static initPromise: Promise<boolean> | null = null;
 
   static async initialize(): Promise<boolean> {
+    // If initialization is already in progress, wait for it
+    if (this.initPromise) {
+      console.log('[GoogleSheetsService] Init already in progress, waiting...');
+      return await this.initPromise;
+    }
+
+    // Start new initialization
+    this.initPromise = this._initializeInternal();
+
+    try {
+      const result = await this.initPromise;
+      return result;
+    } finally {
+      this.initPromise = null;
+    }
+  }
+
+  private static async _initializeInternal(): Promise<boolean> {
     try {
       console.log('[GoogleSheetsService] Initializing...');
       const isSignedIn = await GoogleAuthService.isSignedIn();
