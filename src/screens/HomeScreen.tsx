@@ -292,6 +292,10 @@ const HomeScreen = ({navigation}: any) => {
             <View style={styles.expenseInfo}>
               <Text style={styles.expenseCategoryModern}>
                 {category?.name || 'Other'}
+                {expense.subcategory && category?.subcategories && (() => {
+                  const subcategory = category.subcategories.find(s => s.id === expense.subcategory);
+                  return subcategory ? ` • ${subcategory.name}` : '';
+                })()}
               </Text>
               <Text style={styles.expenseDescriptionModern} numberOfLines={1}>
                 {expense.description || 'No description'}

@@ -225,6 +225,10 @@ const ExpenseListScreen = ({navigation}: any) => {
             <View style={styles.expenseInfo}>
               <Text style={styles.categoryName}>
                 {category?.name || 'Other'}
+                {expense.subcategory && category?.subcategories && (() => {
+                  const subcategory = category.subcategories.find(s => s.id === expense.subcategory);
+                  return subcategory ? ` • ${subcategory.name}` : '';
+                })()}
               </Text>
               {expense.description && (
                 <Text style={styles.expenseDescription} numberOfLines={1}>

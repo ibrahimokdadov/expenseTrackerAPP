@@ -45,7 +45,9 @@
       "Bash(ipconfig)",
       "Bash(if exist appbuild rmdir /s /q appbuild)",
       "Bash(if exist app.cxx rmdir /s /q app.cxx)",
-      "Bash(if exist build rmdir /s /q build)"
+      "Bash(if exist build rmdir /s /q build)",
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -genkey -v -keystore expense-tracker-release.keystore -alias expense-tracker -keyalg RSA -keysize 2048 -validity 10000 -storepass ExpenseTracker2024 -keypass ExpenseTracker2024 -dname \"CN=Expense Tracker, OU=Mobile, O=Personal, L=City, ST=State, C=US\")",
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -list -v -keystore expense-tracker-release.keystore -alias expense-tracker -storepass ExpenseTracker2024)"
     ],
     "deny": [],
     "ask": []

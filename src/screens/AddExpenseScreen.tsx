@@ -58,6 +58,10 @@ const AddExpenseScreen = ({navigation}: any) => {
 
   const loadCategories = async () => {
     const cats = await StorageService.getCategories();
+    console.log('[AddExpenseScreen] Loaded categories:', cats.map(c => ({
+      name: c.name,
+      subcategories: c.subcategories?.length || 0
+    })));
     setCategories(cats);
     if (cats.length > 0 && !selectedCategory) {
       setSelectedCategory(cats[0].id);
@@ -101,7 +105,11 @@ const AddExpenseScreen = ({navigation}: any) => {
   };
 
   const getCurrentCategory = () => {
-    return categories.find(c => c.id === selectedCategory);
+    const cat = categories.find(c => c.id === selectedCategory);
+    if (cat) {
+      console.log(`[AddExpenseScreen] Current category: ${cat.name}, subcategories: ${cat.subcategories?.length || 0}`);
+    }
+    return cat;
   };
 
   const currentCategory = getCurrentCategory();
@@ -150,6 +158,10 @@ const AddExpenseScreen = ({navigation}: any) => {
                     selectedCategory === cat.id && styles.selectedCategoryOption,
                   ]}
                   onPress={() => {
+                    // Only reset subcategory if switching to a different category
+                    if (selectedCategory !== cat.id) {
+                      setSelectedSubcategory('');
+                    }
                     setSelectedCategory(cat.id);
                     setShowCategoryModal(false);
                   }}
@@ -275,6 +287,34 @@ const AddExpenseScreen = ({navigation}: any) => {
               </View>
             </TouchableOpacity>
           </View>
+
+          {currentCategory?.subcategories && currentCategory.subcategories.length > 0 && (
+            <View style={styles.subcategorySection}>
+              <Text style={styles.sectionLabel}>Subcategory</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.subcategoryList}>
+                  {currentCategory.subcategories.map((sub) => (
+                    <TouchableOpacity
+                      key={sub.id}
+                      style={[
+                        styles.subcategoryChip,
+                        selectedSubcategory === sub.id && styles.selectedSubcategoryChip,
+                      ]}
+                      onPress={() => setSelectedSubcategory(sub.id)}
+                      activeOpacity={0.7}>
+                      <Text
+                        style={[
+                          styles.subcategoryChipText,
+                          selectedSubcategory === sub.id && styles.selectedSubcategoryChipText,
+                        ]}>
+                        {sub.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          )}
 
           <View style={styles.descriptionSection}>
             <Text style={styles.sectionLabel}>Description (Optional)</Text>
@@ -623,6 +663,36 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  subcategorySection: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+  },
+  subcategoryList: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  subcategoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#F2F2F7',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  selectedSubcategoryChip: {
+    backgroundColor: '#6B5FFF20',
+    borderColor: '#6B5FFF',
+  },
+  subcategoryChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  selectedSubcategoryChipText: {
+    color: '#6B5FFF',
   },
 });
 

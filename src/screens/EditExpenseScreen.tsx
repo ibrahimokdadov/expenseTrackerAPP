@@ -23,6 +23,7 @@ const EditExpenseScreen = ({navigation, route}: any) => {
 
   const [amount, setAmount] = useState(expense.amount.toString());
   const [selectedCategory, setSelectedCategory] = useState(expense.category);
+  const [selectedSubcategory, setSelectedSubcategory] = useState(expense.subcategory || '');
   const [description, setDescription] = useState(expense.description || '');
   const [date, setDate] = useState(new Date(expense.date));
   const [categories, setCategories] = useState<Category[]>([]);
@@ -55,6 +56,7 @@ const EditExpenseScreen = ({navigation, route}: any) => {
       const updates = {
         amount: parseFloat(amount),
         category: selectedCategory,
+        subcategory: selectedSubcategory || undefined,
         description: description.trim(),
         date: date.toISOString().split('T')[0],
         // timestamp will be set by StorageService.updateExpense
@@ -137,7 +139,13 @@ const EditExpenseScreen = ({navigation, route}: any) => {
           <View style={[styles.pickerContainer, {backgroundColor: colors.card}]}>
             <Picker
               selectedValue={selectedCategory}
-              onValueChange={setSelectedCategory}
+              onValueChange={(value) => {
+                setSelectedCategory(value);
+                // Reset subcategory if switching to a different category
+                if (value !== selectedCategory) {
+                  setSelectedSubcategory('');
+                }
+              }}
               style={[styles.picker, {color: colors.text}]}
               dropdownIconColor={colors.text}>
               <Picker.Item label="Select a category" value="" />
@@ -147,6 +155,39 @@ const EditExpenseScreen = ({navigation, route}: any) => {
             </Picker>
           </View>
         </View>
+
+        {(() => {
+          const currentCategory = categories.find(c => c.id === selectedCategory);
+          if (currentCategory?.subcategories && currentCategory.subcategories.length > 0) {
+            return (
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, {color: colors.text}]}>Subcategory</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.subcategoryList}>
+                    {currentCategory.subcategories.map((sub) => (
+                      <TouchableOpacity
+                        key={sub.id}
+                        style={[
+                          styles.subcategoryChip,
+                          selectedSubcategory === sub.id && styles.selectedSubcategoryChip,
+                        ]}
+                        onPress={() => setSelectedSubcategory(sub.id)}>
+                        <Text
+                          style={[
+                            styles.subcategoryChipText,
+                            selectedSubcategory === sub.id && styles.selectedSubcategoryChipText,
+                          ]}>
+                          {sub.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+            );
+          }
+          return null;
+        })()}
 
         <View style={styles.inputGroup}>
           <Text style={[styles.label, {color: colors.text}]}>Description</Text>
@@ -306,6 +347,31 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.6,
+  },
+  subcategoryList: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 5,
+  },
+  subcategoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#F2F2F7',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  selectedSubcategoryChip: {
+    backgroundColor: '#6B5FFF20',
+    borderColor: '#6B5FFF',
+  },
+  subcategoryChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  selectedSubcategoryChipText: {
+    color: '#6B5FFF',
   },
 });
 

@@ -19,6 +19,23 @@ export class StorageService {
     const categories = await this.getCategories();
     if (categories.length === 0) {
       await this.initializeDefaultCategories();
+    } else {
+      // Check if Personal category needs subcategories added
+      const personalCategory = categories.find(c => c.id === 'personal');
+      if (personalCategory && (!personalCategory.subcategories || personalCategory.subcategories.length === 0)) {
+        personalCategory.subcategories = [
+          {id: 'personal_transport', name: 'Transport', categoryId: 'personal'},
+          {id: 'personal_food', name: 'Food', categoryId: 'personal'},
+          {id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal'},
+          {id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal'},
+          {id: 'personal_shopping', name: 'Shopping', categoryId: 'personal'},
+          {id: 'personal_utilities', name: 'Utilities', categoryId: 'personal'},
+          {id: 'personal_education', name: 'Education', categoryId: 'personal'},
+          {id: 'personal_other', name: 'Other', categoryId: 'personal'},
+        ];
+        await this.saveCategories(categories);
+        console.log('Added subcategories to Personal category');
+      }
     }
 
     // Initialize default user
@@ -57,14 +74,14 @@ export class StorageService {
         name: 'Personal',
         color: '#667EEA',
         subcategories: [
-          {id: 'transport', name: 'Transport', categoryId: 'personal'},
-          {id: 'food', name: 'Food', categoryId: 'personal'},
-          {id: 'entertainment', name: 'Entertainment', categoryId: 'personal'},
-          {id: 'healthcare', name: 'Healthcare', categoryId: 'personal'},
-          {id: 'shopping', name: 'Shopping', categoryId: 'personal'},
-          {id: 'utilities', name: 'Utilities', categoryId: 'personal'},
-          {id: 'education', name: 'Education', categoryId: 'personal'},
-          {id: 'other', name: 'Other', categoryId: 'personal'},
+          {id: 'personal_transport', name: 'Transport', categoryId: 'personal'},
+          {id: 'personal_food', name: 'Food', categoryId: 'personal'},
+          {id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal'},
+          {id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal'},
+          {id: 'personal_shopping', name: 'Shopping', categoryId: 'personal'},
+          {id: 'personal_utilities', name: 'Utilities', categoryId: 'personal'},
+          {id: 'personal_education', name: 'Education', categoryId: 'personal'},
+          {id: 'personal_other', name: 'Other', categoryId: 'personal'},
         ],
       },
     ];
@@ -205,7 +222,7 @@ export class StorageService {
       if (categoryIndex !== -1) {
         const newSubcategory: Subcategory = {
           ...subcategory,
-          id: `${categoryId}_${Date.now()}`,
+          id: `${categoryId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           categoryId,
         };
 
@@ -220,6 +237,23 @@ export class StorageService {
       throw new Error('Category not found');
     } catch (error) {
       console.error('Error adding subcategory:', error);
+      throw error;
+    }
+  }
+
+  static async updateCategory(category: Category) {
+    try {
+      const categories = await this.getCategories();
+      const index = categories.findIndex(c => c.id === category.id);
+
+      if (index !== -1) {
+        categories[index] = category;
+        await this.saveCategories(categories);
+        return category;
+      }
+      throw new Error('Category not found');
+    } catch (error) {
+      console.error('Error updating category:', error);
       throw error;
     }
   }

@@ -199,7 +199,7 @@ export class GoogleSheetsService {
               startRowIndex: 0,
               endRowIndex: 1,
               startColumnIndex: 0,
-              endColumnIndex: 8,
+              endColumnIndex: 9,
             },
             rows: [
               {
@@ -208,6 +208,7 @@ export class GoogleSheetsService {
                   {userEnteredValue: {stringValue: 'Date'}},
                   {userEnteredValue: {stringValue: 'Amount'}},
                   {userEnteredValue: {stringValue: 'Category'}},
+                  {userEnteredValue: {stringValue: 'Sub_Category'}},
                   {userEnteredValue: {stringValue: 'Description'}},
                   {userEnteredValue: {stringValue: 'Currency'}},
                   {userEnteredValue: {stringValue: 'Timestamp'}},
@@ -355,7 +356,7 @@ export class GoogleSheetsService {
       if (!this.isFirstSyncWithExistingSheet && !preserveExisting) {
         console.log('[syncExpenses] ⚠️ Clearing existing sheet data before sync...');
         const clearResponse = await fetch(
-          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:H:clear`,
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:I:clear`,
           {
             method: 'POST',
             headers: {
@@ -384,6 +385,7 @@ export class GoogleSheetsService {
           expense.date || new Date().toISOString().split('T')[0],
           (expense.amount || 0).toString(),
           expense.category || '',
+          expense.subcategory || '',
           expense.description || expense.purpose || '',
           expense.currency || 'DZD',
           expense.timestamp || new Date().toISOString(),
@@ -392,7 +394,7 @@ export class GoogleSheetsService {
 
         // Write new data
         const updateResponse = await fetch(
-          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:H?valueInputOption=USER_ENTERED`,
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:I?valueInputOption=USER_ENTERED`,
           {
             method: 'PUT',
             headers: {
@@ -728,7 +730,7 @@ export class GoogleSheetsService {
 
     // Helper function to create a content hash for comparison
     const getContentHash = (expense: Expense): string => {
-      return `${expense.amount}|${expense.category}|${expense.description || ''}|${expense.date}`;
+      return `${expense.amount}|${expense.category}|${expense.subcategory || ''}|${expense.description || ''}|${expense.date}`;
     };
 
     // Store the last known state to detect manual edits
@@ -773,8 +775,8 @@ export class GoogleSheetsService {
 
         if (dataIsDifferent) {
           console.log(`    ⚠️ DATA DIFFERS for ${remoteExpense.id}`);
-          console.log(`      Local: amount=${localExpense.amount}, cat=${localExpense.category}`);
-          console.log(`      Remote: amount=${remoteExpense.amount}, cat=${remoteExpense.category}`);
+          console.log(`      Local: amount=${localExpense.amount}, cat=${localExpense.category}, subcat=${localExpense.subcategory || 'none'}`);
+          console.log(`      Remote: amount=${remoteExpense.amount}, cat=${remoteExpense.category}, subcat=${remoteExpense.subcategory || 'none'}`);
           console.log(`      Local timestamp: ${localExpense.timestamp}`);
           console.log(`      Remote timestamp: ${remoteExpense.timestamp}`);
 
@@ -947,7 +949,7 @@ export class GoogleSheetsService {
 
       // Fetch all data from sheets
       const [expensesRes, loansRes, categoriesRes] = await Promise.all([
-        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:H`, {
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:I`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
         fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Loans!A2:G`, {
@@ -982,9 +984,10 @@ export class GoogleSheetsService {
         date: row[1],
         amount: parseFloat(row[2] || '0'),
         category: row[3],
-        description: row[4],
-        currency: row[5] || 'DZD',
-        timestamp: row[6] || new Date().toISOString(),
+        subcategory: row[4] || undefined,
+        description: row[5],
+        currency: row[6] || 'DZD',
+        timestamp: row[7] || new Date().toISOString(),
         syncStatus: 'synced',
       }));
 
@@ -1029,7 +1032,7 @@ export class GoogleSheetsService {
 
       // Fetch all data
       const [expensesRes, loansRes, categoriesRes] = await Promise.all([
-        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:H`, {
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:I`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
         fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Loans!A2:G`, {
@@ -1052,12 +1055,13 @@ export class GoogleSheetsService {
         date: row[1],
         amount: parseFloat(row[2]),
         category: row[3],
-        description: row[4],
-        currency: row[5],
-        timestamp: row[6],
+        subcategory: row[4] || undefined,
+        description: row[5],
+        currency: row[6],
+        timestamp: row[7],
         localId: row[0],
         type: 'expense',
-        purpose: row[4],
+        purpose: row[5],
       }));
 
       // Parse loans

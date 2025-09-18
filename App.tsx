@@ -5,6 +5,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import HomeScreen from './src/screens/HomeScreen';
 import AddExpenseScreen from './src/screens/AddExpenseScreen';
 import EditExpenseScreen from './src/screens/EditExpenseScreen';
+import EditCategoryScreen from './src/screens/EditCategoryScreen';
 import ExpenseListScreen from './src/screens/ExpenseListScreen';
 import SyncScreen from './src/screens/SyncScreen';
 import ChartsScreen from './src/screens/ChartsScreen';
@@ -95,6 +96,13 @@ function AppContent(): React.JSX.Element {
           <Stack.Screen
             name="EditExpense"
             component={EditExpenseScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="EditCategory"
+            component={EditCategoryScreen}
             options={{
               headerShown: false,
             }}

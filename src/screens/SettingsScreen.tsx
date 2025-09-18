@@ -17,7 +17,7 @@ import {StorageService} from '../services/StorageService';
 import {CurrencyService, CURRENCIES} from '../services/CurrencyService';
 import GoogleAuthService from '../services/GoogleAuthService';
 import GoogleSheetsService from '../services/GoogleSheetsService';
-import {Currency} from '../types';
+import {Currency, Category} from '../types';
 import {useTheme} from '../contexts/ThemeContext';
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -29,6 +29,7 @@ const SettingsScreen = ({navigation}: any) => {
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     loadSettings();
@@ -49,6 +50,10 @@ const SettingsScreen = ({navigation}: any) => {
     // Get last sync time
     const syncTime = await GoogleSheetsService.getLastSyncTime();
     setLastSyncTime(syncTime);
+
+    // Load categories
+    const cats = await StorageService.getCategories();
+    setCategories(cats);
   };
 
   const handleCurrencyChange = async (newCurrency: Currency) => {
@@ -438,6 +443,37 @@ const SettingsScreen = ({navigation}: any) => {
       marginTop: 20,
       marginBottom: 10,
     },
+    categoryItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    categoryItemLast: {
+      borderBottomWidth: 0,
+    },
+    categoryInfo: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    categoryDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      marginRight: 12,
+    },
+    categoryName: {
+      fontSize: 16,
+      color: colors.text,
+      flex: 1,
+    },
+    subcategoryCount: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginRight: 8,
+    },
   });
 
   return (
@@ -550,6 +586,34 @@ const SettingsScreen = ({navigation}: any) => {
             </View>
           </>
         )}
+      </View>
+
+      {/* Categories Management */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Categories</Text>
+        {categories.map((category, index) => (
+          <TouchableOpacity
+            key={category.id}
+            style={[
+              styles.categoryItem,
+              index === categories.length - 1 && styles.categoryItemLast
+            ]}
+            onPress={() => navigation.navigate('EditCategory', {category})}>
+            <View style={styles.categoryInfo}>
+              <View
+                style={[
+                  styles.categoryDot,
+                  {backgroundColor: category.color || '#6B5FFF'}
+                ]}
+              />
+              <Text style={styles.categoryName}>{category.name}</Text>
+            </View>
+            <Text style={styles.subcategoryCount}>
+              {category.subcategories?.length || 0} subcategories
+            </Text>
+            <Icon name="chevron-right" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Data Management */}
