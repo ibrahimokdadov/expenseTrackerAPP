@@ -22,6 +22,7 @@ export interface SyncResult {
 export class GoogleSheetsService {
   private static sheetInfo: SheetInfo | null = null;
   private static initPromise: Promise<boolean> | null = null;
+  private static isFirstSyncWithExistingSheet: boolean = false;
 
   static async initialize(): Promise<boolean> {
     // If initialization is already in progress, wait for it
@@ -54,33 +55,40 @@ export class GoogleSheetsService {
 
       if (savedSheet) {
         this.sheetInfo = JSON.parse(savedSheet);
-        console.log('[GoogleSheetsService] Using existing sheet:', this.sheetInfo.spreadsheetId);
+        console.log('[GoogleSheetsService] Checking saved sheet:', this.sheetInfo.spreadsheetId);
 
         // Verify sheet still exists and is accessible
         const sheetExists = await this.verifySheetExists();
         if (sheetExists) {
-          console.log('[GoogleSheetsService] Sheet verified and accessible');
-          console.log('[GoogleSheetsService] Using sheet URL:', this.sheetInfo.spreadsheetUrl);
+          console.log('[GoogleSheetsService] ✅ Saved sheet verified and accessible');
+          console.log('[GoogleSheetsService] Sheet URL:', this.sheetInfo.spreadsheetUrl);
           return true;
         } else {
-          console.log('[GoogleSheetsService] Saved sheet no longer exists or is not accessible');
+          console.log('[GoogleSheetsService] ⚠️ Saved sheet no longer exists or is not accessible');
+          console.log('[GoogleSheetsService] Will search for other existing sheets before creating new...');
           await AsyncStorage.removeItem('@expense_tracker_sheet');
           this.sheetInfo = null;
         }
       }
 
-      // Try to find existing sheets first
-      console.log('[GoogleSheetsService] Searching for existing ExpenseTracker sheets...');
+      // ALWAYS try to find existing sheets first, even if saved sheet was invalid
+      console.log('[GoogleSheetsService] 🔍 Searching for existing ExpenseTracker sheets...');
       const existingSheet = await this.findExistingSheet();
       if (existingSheet) {
-        console.log('[GoogleSheetsService] Found existing sheet:', existingSheet.spreadsheetId);
+        console.log('[GoogleSheetsService] ✅ Found existing sheet:', existingSheet.spreadsheetId);
+        console.log('[GoogleSheetsService] Sheet URL:', existingSheet.spreadsheetUrl);
         this.sheetInfo = existingSheet;
         await AsyncStorage.setItem('@expense_tracker_sheet', JSON.stringify(this.sheetInfo));
+
+        // Important: Mark this as first sync with existing sheet to prevent data clearing
+        this.isFirstSyncWithExistingSheet = true;
+        console.log('[GoogleSheetsService] 🔒 Using existing sheet - will preserve existing data on first sync');
         return true;
       }
 
-      // Create a new sheet if none exists
-      console.log('[GoogleSheetsService] No existing sheet found, creating new backup sheet...');
+      // Only create a new sheet if absolutely no sheets exist
+      console.log('[GoogleSheetsService] ⚠️ No existing sheets found at all');
+      console.log('[GoogleSheetsService] Creating new backup sheet...');
       await this.createBackupSheet();
       return true;
     } catch (error) {
@@ -326,8 +334,12 @@ export class GoogleSheetsService {
     }
   }
 
-  static async syncExpenses(expenses: Expense[]): Promise<boolean> {
+  static async syncExpenses(expenses: Expense[], preserveExisting: boolean = false): Promise<boolean> {
     try {
+      console.log('\n🔴 [syncExpenses] DIRECT CALL DETECTED');
+      console.log('[syncExpenses] Caller should use performBidirectionalSync to preserve manual edits!');
+      console.trace('[syncExpenses] Call stack:');
+
       if (!this.sheetInfo) {
         await this.initialize();
         if (!this.sheetInfo) throw new Error('No sheet configured');
@@ -337,21 +349,31 @@ export class GoogleSheetsService {
       if (!accessToken) throw new Error('No access token');
 
       console.log(`[syncExpenses] Syncing ${expenses.length} expenses to sheet`);
+      console.log(`[syncExpenses] Preserve existing: ${preserveExisting}`);
 
-      // Clear existing data
-      const clearResponse = await fetch(
-        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:H:clear`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
+      // Only clear existing data if we should NOT preserve it
+      if (!this.isFirstSyncWithExistingSheet && !preserveExisting) {
+        console.log('[syncExpenses] ⚠️ Clearing existing sheet data before sync...');
+        const clearResponse = await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:H:clear`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (!clearResponse.ok) {
+          console.warn('[syncExpenses] Failed to clear existing data:', clearResponse.status);
         }
-      );
-
-      if (!clearResponse.ok) {
-        console.warn('[syncExpenses] Failed to clear existing data:', clearResponse.status);
+      } else {
+        console.log('[syncExpenses] ✅ Preserving existing sheet data');
+        // Reset the flag after first sync
+        if (this.isFirstSyncWithExistingSheet) {
+          this.isFirstSyncWithExistingSheet = false;
+        }
       }
 
       // Only write data if we have expenses
@@ -506,13 +528,12 @@ export class GoogleSheetsService {
 
   static async syncAll(expenses: Expense[], loans: Loan[], categories: Category[]): Promise<boolean> {
     try {
-      const [expensesResult, loansResult, categoriesResult] = await Promise.all([
-        this.syncExpenses(expenses),
-        this.syncLoans(loans),
-        this.syncCategories(categories),
-      ]);
+      console.log('[syncAll] WARNING: This method bypasses manual edit detection!');
+      console.log('[syncAll] Should use performBidirectionalSync instead');
 
-      return expensesResult && loansResult && categoriesResult;
+      // DO NOT directly sync - use bidirectional sync to preserve manual edits
+      const result = await this.performBidirectionalSync();
+      return result.uploaded > 0 || result.downloaded > 0;
     } catch (error) {
       console.error('Failed to sync all data:', error);
       return false;
@@ -599,12 +620,18 @@ export class GoogleSheetsService {
     };
 
     try {
-      console.log('[Sync] Starting bidirectional sync...');
+      console.log('[Sync] ↔️ Starting bidirectional sync...');
 
       if (!this.sheetInfo) {
         console.log('[Sync] No sheet info, initializing...');
         await this.initialize();
         if (!this.sheetInfo) throw new Error('No sheet configured');
+      }
+
+      // If this is first sync with existing sheet, ensure we download data first
+      if (this.isFirstSyncWithExistingSheet) {
+        console.log('[Sync] 🔒 First sync with existing sheet - will merge with existing data');
+        console.log('[Sync] Remote data will be preserved and merged with local data');
       }
 
       const accessToken = await GoogleAuthService.getAccessToken();
@@ -620,14 +647,19 @@ export class GoogleSheetsService {
       ]);
       console.log(`[Sync] Local data: ${localExpenses.length} expenses, ${localLoans.length} loans, ${localCategories.length} categories`);
 
-      // Get remote data from sheets
-      console.log('[Sync] Fetching remote data from sheets...');
+      // Get remote data from sheets FIRST (priority for manual edits)
+      console.log('[Sync] 📥 Fetching remote data from sheets (checking for manual edits)...');
       const remoteData = await this.fetchRemoteData();
       if (!remoteData) {
         console.error('[Sync] Failed to fetch remote data');
         throw new Error('Failed to fetch remote data');
       }
-      console.log(`[Sync] Remote data: ${remoteData.expenses.length} expenses, ${remoteData.loans.length} loans, ${remoteData.categories.length} categories`);
+      console.log(`[Sync] Remote data found: ${remoteData.expenses.length} expenses, ${remoteData.loans.length} loans, ${remoteData.categories.length} categories`);
+
+      // If remote has data but local doesn't, this might be a restore scenario
+      if (remoteData.expenses.length > 0 && localExpenses.length === 0) {
+        console.log('[Sync] 📥 Remote has data but local is empty - importing all from sheet');
+      }
 
       // Merge expenses
       console.log('[Sync] Merging expenses...');
@@ -685,52 +717,142 @@ export class GoogleSheetsService {
     remoteExpenses: Expense[]
   ): Promise<{uploaded: number; downloaded: number; conflicts: number}> {
     const result = {uploaded: 0, downloaded: 0, conflicts: 0};
-    const localMap = new Map(localExpenses.map(e => [e.id, e]));
+    const localMap = new Map(localExpenses.map(e => [e.id || e.localId, e]));
     const remoteMap = new Map(remoteExpenses.map(e => [e.id, e]));
     const mergedExpenses: Expense[] = [];
+    const processedIds = new Set<string>();
 
-    // Process remote expenses
+    console.log('\n========== MERGE EXPENSES DEBUG ==========');
+    console.log('Local count:', localExpenses.length);
+    console.log('Remote count:', remoteExpenses.length);
+
+    // Helper function to create a content hash for comparison
+    const getContentHash = (expense: Expense): string => {
+      return `${expense.amount}|${expense.category}|${expense.description || ''}|${expense.date}`;
+    };
+
+    // Store the last known state to detect manual edits
+    const lastSyncState = await AsyncStorage.getItem('@last_sync_state');
+    const lastKnownHashes = lastSyncState ? JSON.parse(lastSyncState) : {};
+
+    console.log('[mergeExpenses] Starting merge:');
+    console.log(`  Local expenses: ${localExpenses.length}`);
+    console.log(`  Remote expenses: ${remoteExpenses.length}`);
+    console.log(`  Last sync state: ${Object.keys(lastKnownHashes).length} items`);
+
+    // Process ALL remote expenses first - they take priority for manual edits
     for (const remoteExpense of remoteExpenses) {
       const localExpense = localMap.get(remoteExpense.id);
+      processedIds.add(remoteExpense.id);
 
       if (!localExpense) {
-        // New expense from remote
+        // New expense from remote (manual addition in sheet)
+        console.log(`  📥 NEW from sheet: ${remoteExpense.id}`);
         mergedExpenses.push(remoteExpense);
         result.downloaded++;
       } else {
-        // Expense exists locally - check timestamps
-        const localTime = new Date(localExpense.timestamp).getTime();
-        const remoteTime = new Date(remoteExpense.timestamp).getTime();
+        // Both have this expense - need to determine which is newer
+        const localHash = getContentHash(localExpense);
+        const remoteHash = getContentHash(remoteExpense);
+        const lastKnownHash = lastKnownHashes[remoteExpense.id];
 
-        if (remoteTime > localTime) {
-          // Remote is newer
-          mergedExpenses.push(remoteExpense);
-          result.downloaded++;
-        } else if (localTime > remoteTime) {
-          // Local is newer
-          mergedExpenses.push(localExpense);
-          result.uploaded++;
+        console.log(`  Comparing expense ${remoteExpense.id}:`);
+        console.log(`    Local hash: ${localHash.substring(0, 20)}...`);
+        console.log(`    Remote hash: ${remoteHash.substring(0, 20)}...`);
+        console.log(`    Last known: ${lastKnownHash ? lastKnownHash.substring(0, 20) + '...' : 'unknown'}`);
+
+        // Decision logic:
+        // 1. If remote changed from last known state -> manual edit in sheet, use remote
+        // 2. If local changed from last known state but remote didn't -> local edit, use local
+        // 3. If both changed -> conflict, prefer remote (manual sheet edit)
+        // 4. If neither changed -> keep local
+
+        const remoteChanged = lastKnownHash ? remoteHash !== lastKnownHash : false;
+        const localChanged = lastKnownHash ? localHash !== lastKnownHash : false;
+        const dataIsDifferent = localHash !== remoteHash;
+
+        if (dataIsDifferent) {
+          console.log(`    ⚠️ DATA DIFFERS for ${remoteExpense.id}`);
+          console.log(`      Local: amount=${localExpense.amount}, cat=${localExpense.category}`);
+          console.log(`      Remote: amount=${remoteExpense.amount}, cat=${remoteExpense.category}`);
+          console.log(`      Local timestamp: ${localExpense.timestamp}`);
+          console.log(`      Remote timestamp: ${remoteExpense.timestamp}`);
+
+          // Compare timestamps to determine which is newer
+          const localTime = new Date(localExpense.timestamp || '2000-01-01').getTime();
+          const remoteTime = new Date(remoteExpense.timestamp || '2000-01-01').getTime();
+
+          if (localTime > remoteTime) {
+            // Local is newer - this is a local edit that needs to be uploaded
+            console.log(`    📤 LOCAL is NEWER (edited in app) - keeping local`);
+            mergedExpenses.push(localExpense);
+            result.uploaded++;
+          } else if (remoteTime > localTime) {
+            // Remote is newer - could be from another device
+            console.log(`    📥 REMOTE is NEWER - using remote`);
+            mergedExpenses.push(remoteExpense);
+            result.downloaded++;
+          } else {
+            // Same timestamp but different data - this is likely a manual sheet edit
+            console.log(`    📥 SAME timestamp but DATA DIFFERS - assuming manual sheet edit`);
+            mergedExpenses.push(remoteExpense);
+            result.downloaded++;
+          }
         } else {
-          // Same timestamp, keep local
+          // Data is the same
+          console.log(`    ✓ Data unchanged for ${localExpense.id}`);
           mergedExpenses.push(localExpense);
         }
-
-        // Remove from local map as processed
-        localMap.delete(remoteExpense.id);
       }
     }
 
-    // Add remaining local expenses (new local items)
-    for (const localExpense of localMap.values()) {
-      mergedExpenses.push(localExpense);
-      result.uploaded++;
+    // Add remaining local expenses (new local items not in sheet)
+    for (const [id, localExpense] of localMap.entries()) {
+      if (!processedIds.has(id)) {
+        console.log(`  📤 NEW local expense: ${id}`);
+        mergedExpenses.push(localExpense);
+        result.uploaded++;
+      }
     }
+
+    // Save the current state for future comparisons
+    const newSyncState: Record<string, string> = {};
+    for (const expense of mergedExpenses) {
+      newSyncState[expense.id] = getContentHash(expense);
+    }
+    await AsyncStorage.setItem('@last_sync_state', JSON.stringify(newSyncState));
+
+    console.log('[mergeExpenses] Merge complete:');
+    console.log(`  Total merged: ${mergedExpenses.length}`);
+    console.log(`  Downloaded: ${result.downloaded}`);
+    console.log(`  Uploaded: ${result.uploaded}`);
+    console.log(`  Conflicts: ${result.conflicts}`);
 
     // Save merged data locally
     await StorageService.saveAllExpenses(mergedExpenses);
 
-    // Upload to sheets
-    await this.syncExpenses(mergedExpenses);
+    console.log('\n========== UPLOAD DECISION ==========');
+    console.log('Result - Downloaded:', result.downloaded);
+    console.log('Result - Uploaded:', result.uploaded);
+    console.log('Result - Conflicts:', result.conflicts);
+
+    // Determine if we should upload based on what changed
+    const shouldUpload = result.uploaded > 0;  // We have local changes to push
+
+    console.log('Should Upload?', shouldUpload);
+
+    if (shouldUpload) {
+      // We have local changes that need to be uploaded
+      console.log('\n📤 Local changes detected - uploading to sheets...');
+      await this.syncExpenses(mergedExpenses, false);
+    } else if (result.downloaded > 0) {
+      // Only downloaded changes, no need to upload
+      console.log('\n📥 Only downloaded changes - no upload needed');
+    } else {
+      console.log('\n✅ No changes needed');
+    }
+
+    console.log('========== END MERGE ==========\n');
 
     return result;
   }
@@ -968,6 +1090,7 @@ export class GoogleSheetsService {
     try {
       await AsyncStorage.removeItem('@expense_tracker_sheet');
       await AsyncStorage.removeItem('@last_sync_time');
+      await AsyncStorage.removeItem('@last_sync_state');  // Clear sync state too
       this.sheetInfo = null;
     } catch (error) {
       console.error('Failed to delete sheet info:', error);
@@ -976,20 +1099,47 @@ export class GoogleSheetsService {
 
   private static async verifySheetExists(): Promise<boolean> {
     try {
-      if (!this.sheetInfo) return false;
+      if (!this.sheetInfo) {
+        console.log('[verifySheetExists] No sheet info to verify');
+        return false;
+      }
 
       const accessToken = await GoogleAuthService.getAccessToken();
-      if (!accessToken) return false;
+      if (!accessToken) {
+        console.log('[verifySheetExists] No access token available');
+        return false;
+      }
 
-      // Try to get sheet metadata
+      console.log('[verifySheetExists] Verifying sheet:', this.sheetInfo.spreadsheetId);
+
+      // Try to get sheet metadata with more detailed fields
       const response = await fetch(
-        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}?fields=spreadsheetId`,
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}?fields=spreadsheetId,properties(title),sheets(properties(title))`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
       );
 
-      return response.ok;
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[verifySheetExists] Sheet exists with title:', data.properties?.title);
+
+        // Verify it has the required sheets
+        const hasExpenses = data.sheets?.some((s: any) => s.properties?.title === 'Expenses');
+        const hasLoans = data.sheets?.some((s: any) => s.properties?.title === 'Loans');
+        const hasCategories = data.sheets?.some((s: any) => s.properties?.title === 'Categories');
+
+        if (hasExpenses && hasLoans && hasCategories) {
+          console.log('[verifySheetExists] ✅ Sheet has all required tabs');
+          return true;
+        } else {
+          console.log('[verifySheetExists] ⚠️ Sheet exists but missing required tabs');
+          return true; // Still return true since the sheet exists
+        }
+      } else {
+        console.log('[verifySheetExists] Sheet not accessible, status:', response.status);
+        return false;
+      }
     } catch (error) {
       console.error('[verifySheetExists] Error:', error);
       return false;
@@ -999,18 +1149,35 @@ export class GoogleSheetsService {
   private static async findExistingSheet(): Promise<SheetInfo | null> {
     try {
       const accessToken = await GoogleAuthService.getAccessToken();
-      if (!accessToken) return null;
+      if (!accessToken) {
+        console.log('[findExistingSheet] No access token available');
+        return null;
+      }
 
-      // Search for ExpenseTracker sheets in Google Drive
-      const searchResponse = await fetch(
-        `${DRIVE_API_BASE_URL}?q=name contains 'ExpenseTracker_Backup' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false&fields=files(id,name,createdTime,webViewLink)`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
+      const user = await GoogleAuthService.getCurrentUser();
+      if (!user) {
+        console.log('[findExistingSheet] No user signed in');
+        return null;
+      }
+
+      console.log('[findExistingSheet] Searching for sheets for user:', user.email);
+
+      // Search for ANY ExpenseTracker sheets, not just ones with the exact name
+      // This will find sheets even if they were created manually or renamed
+      const searchQuery = encodeURIComponent(
+        "(name contains 'ExpenseTracker' or name contains 'Expense Tracker') and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
       );
 
+      const searchUrl = `${DRIVE_API_BASE_URL}?q=${searchQuery}&orderBy=createdTime desc&fields=files(id,name,createdTime,webViewLink,modifiedTime)`;
+      console.log('[findExistingSheet] Search URL:', searchUrl);
+
+      const searchResponse = await fetch(searchUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
       if (!searchResponse.ok) {
-        console.error('[findExistingSheet] Search failed:', searchResponse.status);
+        const errorText = await searchResponse.text();
+        console.error('[findExistingSheet] Search failed:', searchResponse.status, errorText);
         return null;
       }
 
@@ -1018,15 +1185,48 @@ export class GoogleSheetsService {
       console.log('[findExistingSheet] Found sheets:', data.files?.length || 0);
 
       if (data.files && data.files.length > 0) {
-        // Use the most recent sheet
-        const mostRecent = data.files[0];
-        return {
-          spreadsheetId: mostRecent.id,
-          spreadsheetUrl: mostRecent.webViewLink,
-          createdAt: mostRecent.createdTime,
-        };
+        console.log('[findExistingSheet] Available sheets:');
+        data.files.forEach((file: any, index: number) => {
+          console.log(`  ${index + 1}. ${file.name} (ID: ${file.id}, Modified: ${file.modifiedTime})`);
+        });
+
+        // Try to find a sheet specifically for this user
+        const userSpecificSheet = data.files.find((file: any) =>
+          file.name.includes(user.email.split('@')[0])
+        );
+
+        const sheetToUse = userSpecificSheet || data.files[0];
+        console.log('[findExistingSheet] Using sheet:', sheetToUse.name);
+
+        // Verify the sheet structure before using it
+        const verifyResponse = await fetch(
+          `${SHEETS_API_BASE_URL}/${sheetToUse.id}?fields=sheets(properties(title))`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+
+        if (verifyResponse.ok) {
+          const sheetData = await verifyResponse.json();
+          const hasRequiredSheets =
+            sheetData.sheets?.some((s: any) => s.properties?.title === 'Expenses') &&
+            sheetData.sheets?.some((s: any) => s.properties?.title === 'Loans') &&
+            sheetData.sheets?.some((s: any) => s.properties?.title === 'Categories');
+
+          if (hasRequiredSheets) {
+            console.log('[findExistingSheet] Sheet has required structure, using it');
+            return {
+              spreadsheetId: sheetToUse.id,
+              spreadsheetUrl: sheetToUse.webViewLink,
+              createdAt: sheetToUse.createdTime,
+            };
+          } else {
+            console.log('[findExistingSheet] Sheet exists but missing required sheets, will create new');
+          }
+        }
       }
 
+      console.log('[findExistingSheet] No suitable existing sheet found');
       return null;
     } catch (error) {
       console.error('[findExistingSheet] Error:', error);

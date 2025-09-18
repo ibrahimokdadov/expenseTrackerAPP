@@ -39,7 +39,13 @@
       "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -list -v -keystore \"android\\app\\debug.keystore\" -alias androiddebugkey -storepass android -keypass android)",
       "Bash(del:*)",
       "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -genkey -v -keystore androidappdebug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname \"CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US\")",
-      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname \"CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US\")"
+      "Bash(\"C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool\" -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname \"CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US\")",
+      "Bash(if exist androidappbuild rmdir /s /q androidappbuild)",
+      "Bash(cmd /c:*)",
+      "Bash(ipconfig)",
+      "Bash(if exist appbuild rmdir /s /q appbuild)",
+      "Bash(if exist app.cxx rmdir /s /q app.cxx)",
+      "Bash(if exist build rmdir /s /q build)"
     ],
     "deny": [],
     "ask": []

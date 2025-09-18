@@ -205,6 +205,7 @@ const ExpenseListScreen = ({navigation}: any) => {
           style={styles.expenseContent}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          onPress={() => navigation.navigate('EditExpense', {expense})}
           onLongPress={() => onDelete(expense)}
           activeOpacity={0.9}>
 

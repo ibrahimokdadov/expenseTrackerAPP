@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {StorageService} from '../services/StorageService';
 import {CurrencyService} from '../services/CurrencyService';
 import GoogleAuthService from '../services/GoogleAuthService';
@@ -26,6 +27,7 @@ const {width, height} = Dimensions.get('window');
 
 const HomeScreen = ({navigation}: any) => {
   const {theme, colors} = useTheme();
+  const insets = useSafeAreaInsets();
   const [recentExpenses, setRecentExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -268,6 +270,7 @@ const HomeScreen = ({navigation}: any) => {
           style={styles.expenseCardContent}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          onPress={() => navigation.navigate('EditExpense', {expense})}
           activeOpacity={0.9}>
 
           <View style={styles.expenseLeft}>
@@ -637,7 +640,7 @@ const HomeScreen = ({navigation}: any) => {
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
-      <View style={styles.bottomNav}>
+      <View style={[styles.bottomNav, {paddingBottom: insets.bottom > 0 ? insets.bottom : 12}]}>
         <TouchableOpacity style={styles.navItem}>
           <Text style={[styles.navIcon, styles.navActive]}>🏠</Text>
         </TouchableOpacity>

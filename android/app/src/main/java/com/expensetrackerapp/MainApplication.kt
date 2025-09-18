@@ -33,6 +33,17 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // Load native libraries explicitly
+    try {
+      System.loadLibrary("rnscreens")
+    } catch (e: UnsatisfiedLinkError) {
+      // Library might not exist or already loaded
+    }
+    try {
+      System.loadLibrary("reanimated")
+    } catch (e: UnsatisfiedLinkError) {
+      // Library might not exist or already loaded
+    }
     loadReactNative(this)
   }
 }

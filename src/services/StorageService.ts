@@ -141,8 +141,15 @@ export class StorageService {
       const expenses = await this.getExpenses();
       const index = expenses.findIndex(e => e.id === id);
       if (index !== -1) {
-        expenses[index] = {...expenses[index], ...updates};
+        // Always update timestamp when editing to mark as newer than remote
+        expenses[index] = {
+          ...expenses[index],
+          ...updates,
+          timestamp: new Date().toISOString() // Force new timestamp
+        };
         await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+
+        console.log(`[updateExpense] Updated expense ${id} with new timestamp: ${expenses[index].timestamp}`);
 
         // Trigger auto backup
         this.scheduleBackup();
@@ -390,8 +397,9 @@ export class StorageService {
           this.getCategories(),
         ]);
 
-        await GoogleSheetsService.syncAll(expenses, loans, categories);
-        console.log('Auto backup completed successfully');
+        // Use bidirectional sync to preserve manual sheet edits
+        const result = await GoogleSheetsService.performBidirectionalSync();
+        console.log('Auto backup completed successfully:', result.message);
       } catch (error) {
         console.error('Auto backup failed:', error);
       }
@@ -430,7 +438,9 @@ export class StorageService {
         this.getCategories(),
       ]);
 
-      return await GoogleSheetsService.syncAll(expenses, loans, categories);
+      // Use bidirectional sync to preserve manual sheet edits
+      const result = await GoogleSheetsService.performBidirectionalSync();
+      return result.uploaded > 0 || result.downloaded > 0;
     } catch (error) {
       console.error('Manual backup failed:', error);
       return false;

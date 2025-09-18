@@ -16,6 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import {StorageService} from '../services/StorageService';
 import GoogleSheetsService, {SyncResult} from '../services/GoogleSheetsService';
 import GoogleAuthService from '../services/GoogleAuthService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SyncScreen = ({navigation}: any) => {
   const [isSyncing, setIsSyncing] = useState(false);
@@ -399,6 +400,19 @@ const SyncScreen = ({navigation}: any) => {
                     }
                   }}>
                   <Text style={styles.debugButtonText}>Check Access Token</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.debugButton}
+                  onPress={async () => {
+                    try {
+                      console.log('[Debug] Clearing sync state...');
+                      await AsyncStorage.removeItem('@last_sync_state');
+                      Alert.alert('Debug', 'Sync state cleared. Next sync will treat all differences as manual edits.');
+                    } catch (error) {
+                      Alert.alert('Error', 'Failed to clear sync state');
+                    }
+                  }}>
+                  <Text style={styles.debugButtonText}>Clear Sync State</Text>
                 </TouchableOpacity>
               </View>
             )}

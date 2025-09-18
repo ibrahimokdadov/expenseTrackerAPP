@@ -4,6 +4,7 @@ import {createStackNavigator} from '@react-navigation/stack';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import HomeScreen from './src/screens/HomeScreen';
 import AddExpenseScreen from './src/screens/AddExpenseScreen';
+import EditExpenseScreen from './src/screens/EditExpenseScreen';
 import ExpenseListScreen from './src/screens/ExpenseListScreen';
 import SyncScreen from './src/screens/SyncScreen';
 import ChartsScreen from './src/screens/ChartsScreen';
@@ -89,6 +90,13 @@ function AppContent(): React.JSX.Element {
                 elevation: 0,
                 shadowOpacity: 0,
               },
+            }}
+          />
+          <Stack.Screen
+            name="EditExpense"
+            component={EditExpenseScreen}
+            options={{
+              headerShown: false,
             }}
           />
           <Stack.Screen
