@@ -1,4 +1,4 @@
-import {Expense, ConflictItem, Loan, Category} from '../types';
+import {Expense, ConflictItem, Loan, Category, ZTBalance, ZTPayment} from '../types';
 import GoogleAuthService from './GoogleAuthService';
 import {StorageService} from './StorageService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -62,6 +62,8 @@ export class GoogleSheetsService {
         if (sheetExists) {
           console.log('[GoogleSheetsService] ✅ Saved sheet verified and accessible');
           console.log('[GoogleSheetsService] Sheet URL:', this.sheetInfo.spreadsheetUrl);
+          // Ensure ZT sheets exist in the existing spreadsheet
+          await this.ensureZTSheetsExist();
           return true;
         } else {
           console.log('[GoogleSheetsService] ⚠️ Saved sheet no longer exists or is not accessible');
@@ -83,6 +85,8 @@ export class GoogleSheetsService {
         // Important: Mark this as first sync with existing sheet to prevent data clearing
         this.isFirstSyncWithExistingSheet = true;
         console.log('[GoogleSheetsService] 🔒 Using existing sheet - will preserve existing data on first sync');
+        // Ensure ZT sheets exist in the existing spreadsheet
+        await this.ensureZTSheetsExist();
         return true;
       }
 
@@ -152,6 +156,26 @@ export class GoogleSheetsService {
             {
               properties: {
                 sheetId: 3,
+                title: 'ZT_Balances',
+                gridProperties: {
+                  rowCount: 1000,
+                  columnCount: 6,
+                },
+              },
+            },
+            {
+              properties: {
+                sheetId: 4,
+                title: 'ZT_Payments',
+                gridProperties: {
+                  rowCount: 1000,
+                  columnCount: 5,
+                },
+              },
+            },
+            {
+              properties: {
+                sheetId: 5,
                 title: 'Metadata',
                 gridProperties: {
                   rowCount: 10,
@@ -268,11 +292,58 @@ export class GoogleSheetsService {
             fields: 'userEnteredValue',
           },
         },
-        // Metadata
+        // ZT Balances headers
         {
           updateCells: {
             range: {
               sheetId: 3,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 5,
+            },
+            rows: [
+              {
+                values: [
+                  {userEnteredValue: {stringValue: 'ID'}},
+                  {userEnteredValue: {stringValue: 'Owner'}},
+                  {userEnteredValue: {stringValue: 'Value'}},
+                  {userEnteredValue: {stringValue: 'Year'}},
+                  {userEnteredValue: {stringValue: 'DateAdded'}},
+                ],
+              },
+            ],
+            fields: 'userEnteredValue',
+          },
+        },
+        // ZT Payments headers
+        {
+          updateCells: {
+            range: {
+              sheetId: 4,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 4,
+            },
+            rows: [
+              {
+                values: [
+                  {userEnteredValue: {stringValue: 'ID'}},
+                  {userEnteredValue: {stringValue: 'Amount'}},
+                  {userEnteredValue: {stringValue: 'Purpose'}},
+                  {userEnteredValue: {stringValue: 'Date'}},
+                ],
+              },
+            ],
+            fields: 'userEnteredValue',
+          },
+        },
+        // Metadata
+        {
+          updateCells: {
+            range: {
+              sheetId: 5,
               startRowIndex: 0,
               endRowIndex: 2,
               startColumnIndex: 0,
@@ -528,6 +599,99 @@ export class GoogleSheetsService {
     }
   }
 
+  static async syncZTBalances(balances: ZTBalance[]): Promise<boolean> {
+    try {
+      if (!this.sheetInfo) {
+        await this.initialize();
+        if (!this.sheetInfo) throw new Error('No sheet configured');
+      }
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) throw new Error('No access token');
+
+      const values = balances.map(bal => [
+        bal.id,
+        bal.owner,
+        bal.value.toString(),
+        bal.year.toString(),
+        bal.dateAdded,
+      ]);
+
+      await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Balances!A2:E:clear`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const response = await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Balances!A2:E?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ values }),
+        }
+      );
+
+      return response.ok;
+    } catch (error) {
+      console.error('Failed to sync ZT balances:', error);
+      return false;
+    }
+  }
+
+  static async syncZTPayments(payments: ZTPayment[]): Promise<boolean> {
+    try {
+      if (!this.sheetInfo) {
+        await this.initialize();
+        if (!this.sheetInfo) throw new Error('No sheet configured');
+      }
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) throw new Error('No access token');
+
+      const values = payments.map(pay => [
+        pay.id,
+        pay.amount.toString(),
+        pay.purpose,
+        pay.date,
+      ]);
+
+      await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Payments!A2:D:clear`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const response = await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Payments!A2:D?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ values }),
+        }
+      );
+
+      return response.ok;
+    } catch (error) {
+      console.error('Failed to sync ZT payments:', error);
+      return false;
+    }
+  }
+
   static async syncAll(expenses: Expense[], loans: Loan[], categories: Category[]): Promise<boolean> {
     try {
       console.log('[syncAll] WARNING: This method bypasses manual edit detection!');
@@ -642,12 +806,15 @@ export class GoogleSheetsService {
 
       // Get local data
       console.log('[Sync] Fetching local data...');
-      const [localExpenses, localLoans, localCategories] = await Promise.all([
+      const [localExpenses, localLoans, localCategories, localZTBalances, localZTPayments] = await Promise.all([
         StorageService.getExpenses(),
         StorageService.getLoans(),
         StorageService.getCategories(),
+        StorageService.getZTBalances(),
+        StorageService.getZTPayments(),
       ]);
       console.log(`[Sync] Local data: ${localExpenses.length} expenses, ${localLoans.length} loans, ${localCategories.length} categories`);
+      console.log(`[Sync] Local ZT data: ${localZTBalances.length} balances, ${localZTPayments.length} payments`);
 
       // Get remote data from sheets FIRST (priority for manual edits)
       console.log('[Sync] 📥 Fetching remote data from sheets (checking for manual edits)...');
@@ -657,6 +824,7 @@ export class GoogleSheetsService {
         throw new Error('Failed to fetch remote data');
       }
       console.log(`[Sync] Remote data found: ${remoteData.expenses.length} expenses, ${remoteData.loans.length} loans, ${remoteData.categories.length} categories`);
+      console.log(`[Sync] Remote ZT data: ${remoteData.ztBalances?.length || 0} balances, ${remoteData.ztPayments?.length || 0} payments`);
 
       // If remote has data but local doesn't, this might be a restore scenario
       if (remoteData.expenses.length > 0 && localExpenses.length === 0) {
@@ -690,6 +858,30 @@ export class GoogleSheetsService {
       );
       result.uploaded += categoryMergeResult.uploaded;
       result.downloaded += categoryMergeResult.downloaded;
+
+      // Merge ZT data
+      console.log('[Sync] Merging ZT data...');
+      const ztBalancesMergeResult = await this.mergeZTBalances(
+        localZTBalances,
+        remoteData.ztBalances || []
+      );
+      result.uploaded += ztBalancesMergeResult.uploaded;
+      result.downloaded += ztBalancesMergeResult.downloaded;
+
+      const ztPaymentsMergeResult = await this.mergeZTPayments(
+        localZTPayments,
+        remoteData.ztPayments || []
+      );
+      result.uploaded += ztPaymentsMergeResult.uploaded;
+      result.downloaded += ztPaymentsMergeResult.downloaded;
+
+      // Process deletions - remove items that were deleted locally from the sheet
+      console.log('[Sync] Processing deletions...');
+      const deletedCount = await this.processDeletions();
+      if (deletedCount > 0) {
+        console.log(`[Sync] Removed ${deletedCount} deleted items from sheets`);
+        result.message = `Sync completed. Removed ${deletedCount} deleted items.`;
+      }
 
       // Update last sync time
       await this.updateLastSyncTime();
@@ -932,7 +1124,69 @@ export class GoogleSheetsService {
     return result;
   }
 
-  private static async fetchRemoteData(): Promise<{expenses: Expense[], loans: Loan[], categories: Category[]} | null> {
+  private static async mergeZTBalances(
+    localBalances: ZTBalance[],
+    remoteBalances: ZTBalance[]
+  ): Promise<{uploaded: number; downloaded: number}> {
+    const result = {uploaded: 0, downloaded: 0};
+    const localMap = new Map(localBalances.map(b => [b.id, b]));
+    const remoteMap = new Map(remoteBalances.map(b => [b.id, b]));
+    const mergedBalances: ZTBalance[] = [];
+
+    // Add all remote balances first (priority for manual edits)
+    for (const remoteBalance of remoteBalances) {
+      mergedBalances.push(remoteBalance);
+      if (!localMap.has(remoteBalance.id)) {
+        result.downloaded++;
+      }
+      localMap.delete(remoteBalance.id);
+    }
+
+    // Add remaining local balances (new items)
+    for (const localBalance of localMap.values()) {
+      mergedBalances.push(localBalance);
+      result.uploaded++;
+    }
+
+    // Save merged data
+    await StorageService.saveAllZTBalances(mergedBalances);
+    await this.syncZTBalances(mergedBalances);
+
+    return result;
+  }
+
+  private static async mergeZTPayments(
+    localPayments: ZTPayment[],
+    remotePayments: ZTPayment[]
+  ): Promise<{uploaded: number; downloaded: number}> {
+    const result = {uploaded: 0, downloaded: 0};
+    const localMap = new Map(localPayments.map(p => [p.id, p]));
+    const remoteMap = new Map(remotePayments.map(p => [p.id, p]));
+    const mergedPayments: ZTPayment[] = [];
+
+    // Add all remote payments first (priority for manual edits)
+    for (const remotePayment of remotePayments) {
+      mergedPayments.push(remotePayment);
+      if (!localMap.has(remotePayment.id)) {
+        result.downloaded++;
+      }
+      localMap.delete(remotePayment.id);
+    }
+
+    // Add remaining local payments (new items)
+    for (const localPayment of localMap.values()) {
+      mergedPayments.push(localPayment);
+      result.uploaded++;
+    }
+
+    // Save merged data
+    await StorageService.saveAllZTPayments(mergedPayments);
+    await this.syncZTPayments(mergedPayments);
+
+    return result;
+  }
+
+  private static async fetchRemoteData(): Promise<{expenses: Expense[], loans: Loan[], categories: Category[], ztBalances?: ZTBalance[], ztPayments?: ZTPayment[]} | null> {
     try {
       if (!this.sheetInfo) {
         console.log('[fetchRemoteData] No sheet info available');
@@ -948,7 +1202,7 @@ export class GoogleSheetsService {
       console.log('[fetchRemoteData] Fetching from spreadsheet:', this.sheetInfo.spreadsheetId);
 
       // Fetch all data from sheets
-      const [expensesRes, loansRes, categoriesRes] = await Promise.all([
+      const [expensesRes, loansRes, categoriesRes, ztBalancesRes, ztPaymentsRes] = await Promise.all([
         fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:I`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
@@ -958,24 +1212,36 @@ export class GoogleSheetsService {
         fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Categories!A2:D`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Balances!A2:E`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Payments!A2:D`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
       ]);
 
       console.log('[fetchRemoteData] API responses:', {
         expenses: `${expensesRes.status} ${expensesRes.ok ? 'OK' : 'FAILED'}`,
         loans: `${loansRes.status} ${loansRes.ok ? 'OK' : 'FAILED'}`,
         categories: `${categoriesRes.status} ${categoriesRes.ok ? 'OK' : 'FAILED'}`,
+        ztBalances: `${ztBalancesRes.status} ${ztBalancesRes.ok ? 'OK' : 'FAILED'}`,
+        ztPayments: `${ztPaymentsRes.status} ${ztPaymentsRes.ok ? 'OK' : 'FAILED'}`,
       });
 
-      const [expensesData, loansData, categoriesData] = await Promise.all([
+      const [expensesData, loansData, categoriesData, ztBalancesData, ztPaymentsData] = await Promise.all([
         expensesRes.json(),
         loansRes.json(),
         categoriesRes.json(),
+        ztBalancesRes.json(),
+        ztPaymentsRes.json(),
       ]);
 
       console.log('[fetchRemoteData] Raw data:', {
         expenses: expensesData.values ? `${expensesData.values.length} rows` : 'No values',
         loans: loansData.values ? `${loansData.values.length} rows` : 'No values',
         categories: categoriesData.values ? `${categoriesData.values.length} rows` : 'No values',
+        ztBalances: ztBalancesData.values ? `${ztBalancesData.values.length} rows` : 'No values',
+        ztPayments: ztPaymentsData.values ? `${ztPaymentsData.values.length} rows` : 'No values',
       });
 
       // Parse expenses
@@ -1013,7 +1279,24 @@ export class GoogleSheetsService {
         color: row[3],
       }));
 
-      return { expenses, loans, categories };
+      // Parse ZT Balances
+      const ztBalances: ZTBalance[] = (ztBalancesData.values || []).map((row: any[]) => ({
+        id: row[0],
+        owner: row[1],
+        value: parseFloat(row[2] || '0'),
+        year: parseInt(row[3] || '0'),
+        dateAdded: row[4],
+      }));
+
+      // Parse ZT Payments
+      const ztPayments: ZTPayment[] = (ztPaymentsData.values || []).map((row: any[]) => ({
+        id: row[0],
+        amount: parseFloat(row[1] || '0'),
+        purpose: row[2],
+        date: row[3],
+      }));
+
+      return { expenses, loans, categories, ztBalances, ztPayments };
     } catch (error) {
       console.error('Failed to fetch remote data:', error);
       return null;
@@ -1098,6 +1381,328 @@ export class GoogleSheetsService {
       this.sheetInfo = null;
     } catch (error) {
       console.error('Failed to delete sheet info:', error);
+    }
+  }
+
+  private static async processDeletions(): Promise<number> {
+    try {
+      if (!this.sheetInfo) return 0;
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) return 0;
+
+      const deletedItems = await StorageService.getDeletedItems();
+      let totalDeleted = 0;
+
+      // Process expense deletions
+      if (deletedItems.expense && deletedItems.expense.length > 0) {
+        console.log(`[processDeletions] Processing ${deletedItems.expense.length} expense deletions`);
+
+        // Get current expenses from sheet
+        const response = await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A:I`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const rows = data.values || [];
+
+          // Find rows to delete (keep header row)
+          const rowsToDelete: number[] = [];
+          for (let i = 1; i < rows.length; i++) {
+            if (deletedItems.expense.includes(rows[i][0])) {
+              rowsToDelete.push(i);
+            }
+          }
+
+          // Delete rows in reverse order to maintain indices
+          for (const rowIndex of rowsToDelete.reverse()) {
+            await this.deleteSheetRow('Expenses', rowIndex);
+            totalDeleted++;
+          }
+        }
+      }
+
+      // Process loan deletions
+      if (deletedItems.loan && deletedItems.loan.length > 0) {
+        console.log(`[processDeletions] Processing ${deletedItems.loan.length} loan deletions`);
+
+        const response = await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Loans!A:G`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const rows = data.values || [];
+
+          const rowsToDelete: number[] = [];
+          for (let i = 1; i < rows.length; i++) {
+            if (deletedItems.loan.includes(rows[i][0])) {
+              rowsToDelete.push(i);
+            }
+          }
+
+          for (const rowIndex of rowsToDelete.reverse()) {
+            await this.deleteSheetRow('Loans', rowIndex);
+            totalDeleted++;
+          }
+        }
+      }
+
+      // Process ZT balance deletions
+      if (deletedItems.zt_balance && deletedItems.zt_balance.length > 0) {
+        console.log(`[processDeletions] Processing ${deletedItems.zt_balance.length} ZT balance deletions`);
+
+        const response = await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Balances!A:E`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const rows = data.values || [];
+
+          const rowsToDelete: number[] = [];
+          for (let i = 1; i < rows.length; i++) {
+            if (deletedItems.zt_balance.includes(rows[i][0])) {
+              rowsToDelete.push(i);
+            }
+          }
+
+          for (const rowIndex of rowsToDelete.reverse()) {
+            await this.deleteSheetRow('ZT_Balances', rowIndex);
+            totalDeleted++;
+          }
+        }
+      }
+
+      // Process ZT payment deletions
+      if (deletedItems.zt_payment && deletedItems.zt_payment.length > 0) {
+        console.log(`[processDeletions] Processing ${deletedItems.zt_payment.length} ZT payment deletions`);
+
+        const response = await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Payments!A:D`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const rows = data.values || [];
+
+          const rowsToDelete: number[] = [];
+          for (let i = 1; i < rows.length; i++) {
+            if (deletedItems.zt_payment.includes(rows[i][0])) {
+              rowsToDelete.push(i);
+            }
+          }
+
+          for (const rowIndex of rowsToDelete.reverse()) {
+            await this.deleteSheetRow('ZT_Payments', rowIndex);
+            totalDeleted++;
+          }
+        }
+      }
+
+      // Clear the deleted items tracking after successful processing
+      if (totalDeleted > 0) {
+        await StorageService.clearDeletedItems();
+      }
+
+      return totalDeleted;
+    } catch (error) {
+      console.error('[processDeletions] Failed to process deletions:', error);
+      return 0;
+    }
+  }
+
+  private static async deleteSheetRow(sheetName: string, rowIndex: number): Promise<void> {
+    try {
+      if (!this.sheetInfo) return;
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) return;
+
+      // Get sheet ID
+      const sheetsResponse = await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}?fields=sheets(properties(title,sheetId))`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
+      if (!sheetsResponse.ok) return;
+
+      const sheetsData = await sheetsResponse.json();
+      const sheet = sheetsData.sheets.find((s: any) => s.properties.title === sheetName);
+
+      if (!sheet) return;
+
+      const sheetId = sheet.properties.sheetId;
+
+      // Delete the row using batchUpdate
+      const request = {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheetId,
+                dimension: 'ROWS',
+                startIndex: rowIndex,
+                endIndex: rowIndex + 1,
+              },
+            },
+          },
+        ],
+      };
+
+      await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}:batchUpdate`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(request),
+        }
+      );
+    } catch (error) {
+      console.error(`[deleteSheetRow] Failed to delete row ${rowIndex} from ${sheetName}:`, error);
+    }
+  }
+
+  private static async ensureZTSheetsExist(): Promise<void> {
+    try {
+      if (!this.sheetInfo) return;
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) return;
+
+      // Get current sheets in the spreadsheet
+      const response = await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}?fields=sheets(properties(title,sheetId))`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const existingSheets = data.sheets.map((s: any) => s.properties.title);
+
+      console.log('[ensureZTSheetsExist] Existing sheets:', existingSheets);
+
+      const requests: any[] = [];
+
+      // Check if ZT_Balances sheet exists
+      if (!existingSheets.includes('ZT_Balances')) {
+        console.log('[ensureZTSheetsExist] Creating ZT_Balances sheet');
+        requests.push({
+          addSheet: {
+            properties: {
+              title: 'ZT_Balances',
+              gridProperties: {
+                rowCount: 1000,
+                columnCount: 6,
+              },
+            },
+          },
+        });
+      }
+
+      // Check if ZT_Payments sheet exists
+      if (!existingSheets.includes('ZT_Payments')) {
+        console.log('[ensureZTSheetsExist] Creating ZT_Payments sheet');
+        requests.push({
+          addSheet: {
+            properties: {
+              title: 'ZT_Payments',
+              gridProperties: {
+                rowCount: 1000,
+                columnCount: 5,
+              },
+            },
+          },
+        });
+      }
+
+      // If we have sheets to add, send the batch update request
+      if (requests.length > 0) {
+        const batchUpdateResponse = await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}:batchUpdate`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ requests }),
+          }
+        );
+
+        if (batchUpdateResponse.ok) {
+          console.log('[ensureZTSheetsExist] Successfully created missing ZT sheets');
+
+          // Now add headers to the new sheets
+          await this.setupZTSheetHeaders();
+        }
+      }
+    } catch (error) {
+      console.error('[ensureZTSheetsExist] Failed to ensure ZT sheets exist:', error);
+    }
+  }
+
+  private static async setupZTSheetHeaders(): Promise<void> {
+    try {
+      if (!this.sheetInfo) return;
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) return;
+
+      // Set headers for ZT_Balances
+      await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Balances!A1:E1?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            values: [['ID', 'Owner', 'Value', 'Year', 'DateAdded']],
+          }),
+        }
+      );
+
+      // Set headers for ZT_Payments
+      await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Payments!A1:D1?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            values: [['ID', 'Amount', 'Purpose', 'Date']],
+          }),
+        }
+      );
+
+      console.log('[setupZTSheetHeaders] Headers added to ZT sheets');
+    } catch (error) {
+      console.error('[setupZTSheetHeaders] Failed to setup headers:', error);
     }
   }
 

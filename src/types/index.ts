@@ -84,3 +84,19 @@ export interface SubcategoryBreakdown {
   total: number;
   percentage: number;
 }
+
+// ZT (Zakat Tracking) Types
+export interface ZTBalance {
+  id: string;
+  owner: string;
+  value: number;
+  year: number;
+  dateAdded: string;
+}
+
+export interface ZTPayment {
+  id: string;
+  amount: number;
+  purpose: string;
+  date: string;
+}

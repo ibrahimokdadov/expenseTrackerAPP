@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {Expense, Category, Subcategory, Loan, User} from '../types';
+import {Expense, Category, Subcategory, Loan, User, ZTBalance, ZTPayment} from '../types';
 import GoogleSheetsService from './GoogleSheetsService';
 import GoogleAuthService from './GoogleAuthService';
 
@@ -8,6 +8,9 @@ const CATEGORIES_KEY = '@categories';
 const LOANS_KEY = '@loans';
 const USERS_KEY = '@users';
 const CURRENT_USER_KEY = '@current_user';
+const ZT_BALANCES_KEY = '@zt_balances';
+const ZT_PAYMENTS_KEY = '@zt_payments';
+const DELETED_ITEMS_KEY = '@deleted_items';
 
 export class StorageService {
   private static autoBackupEnabled = false;
@@ -186,6 +189,9 @@ export class StorageService {
       const filtered = expenses.filter(e => e.id !== id);
       await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(filtered));
 
+      // Track deletion for sync
+      await this.trackDeletion('expense', id);
+
       // Trigger auto backup
       this.scheduleBackup();
     } catch (error) {
@@ -237,6 +243,49 @@ export class StorageService {
       throw new Error('Category not found');
     } catch (error) {
       console.error('Error adding subcategory:', error);
+      throw error;
+    }
+  }
+
+  static async restorePersonalSubcategories() {
+    try {
+      const categories = await this.getCategories();
+      const personalIndex = categories.findIndex(c => c.id === 'personal');
+
+      if (personalIndex !== -1) {
+        categories[personalIndex].subcategories = [
+          {id: 'personal_transport', name: 'Transport', categoryId: 'personal'},
+          {id: 'personal_food', name: 'Food', categoryId: 'personal'},
+          {id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal'},
+          {id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal'},
+          {id: 'personal_shopping', name: 'Shopping', categoryId: 'personal'},
+          {id: 'personal_utilities', name: 'Utilities', categoryId: 'personal'},
+          {id: 'personal_education', name: 'Education', categoryId: 'personal'},
+          {id: 'personal_other', name: 'Other', categoryId: 'personal'},
+        ];
+        await this.saveCategories(categories);
+        console.log('Restored Personal category subcategories');
+      }
+    } catch (error) {
+      console.error('Error restoring Personal subcategories:', error);
+      throw error;
+    }
+  }
+
+  static async addCategory(category: Category) {
+    try {
+      const categories = await this.getCategories();
+      categories.push(category);
+      await this.saveCategories(categories);
+
+      // Sync with Google Sheets if auto-backup is enabled
+      if (this.isAutoBackupEnabled()) {
+        this.syncToGoogleSheets();
+      }
+
+      return category;
+    } catch (error) {
+      console.error('Error adding category:', error);
       throw error;
     }
   }
@@ -333,6 +382,10 @@ export class StorageService {
       const loans = await this.getLoans();
       const filtered = loans.filter(l => l.id !== id);
       await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(filtered));
+
+      // Track deletion for sync
+      await this.trackDeletion('loan', id);
+      this.scheduleBackup();
     } catch (error) {
       console.error('Error deleting loan:', error);
       throw error;
@@ -388,6 +441,148 @@ export class StorageService {
     }
   }
 
+  // ZT (Zakat Tracking) Management
+  static async getZTBalances(): Promise<ZTBalance[]> {
+    try {
+      const balances = await AsyncStorage.getItem(ZT_BALANCES_KEY);
+      return balances ? JSON.parse(balances) : [];
+    } catch (error) {
+      console.error('Error getting ZT balances:', error);
+      return [];
+    }
+  }
+
+  static async addZTBalance(balance: Omit<ZTBalance, 'id' | 'dateAdded'>): Promise<ZTBalance> {
+    try {
+      const balances = await this.getZTBalances();
+      const newBalance: ZTBalance = {
+        ...balance,
+        id: `zt_bal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        dateAdded: new Date().toISOString(),
+      };
+      balances.push(newBalance);
+      await AsyncStorage.setItem(ZT_BALANCES_KEY, JSON.stringify(balances));
+      return newBalance;
+    } catch (error) {
+      console.error('Error adding ZT balance:', error);
+      throw error;
+    }
+  }
+
+  static async deleteZTBalance(id: string) {
+    try {
+      const balances = await this.getZTBalances();
+      const filtered = balances.filter(b => b.id !== id);
+      await AsyncStorage.setItem(ZT_BALANCES_KEY, JSON.stringify(filtered));
+
+      // Track deletion for sync
+      await this.trackDeletion('zt_balance', id);
+      this.scheduleBackup();
+    } catch (error) {
+      console.error('Error deleting ZT balance:', error);
+      throw error;
+    }
+  }
+
+  static async getZTPayments(): Promise<ZTPayment[]> {
+    try {
+      const payments = await AsyncStorage.getItem(ZT_PAYMENTS_KEY);
+      return payments ? JSON.parse(payments) : [];
+    } catch (error) {
+      console.error('Error getting ZT payments:', error);
+      return [];
+    }
+  }
+
+  static async addZTPayment(payment: Omit<ZTPayment, 'id' | 'date'>): Promise<ZTPayment> {
+    try {
+      const payments = await this.getZTPayments();
+      const newPayment: ZTPayment = {
+        ...payment,
+        id: `zt_pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        date: new Date().toISOString(),
+      };
+      payments.push(newPayment);
+      await AsyncStorage.setItem(ZT_PAYMENTS_KEY, JSON.stringify(payments));
+      return newPayment;
+    } catch (error) {
+      console.error('Error adding ZT payment:', error);
+      throw error;
+    }
+  }
+
+  static async deleteZTPayment(id: string) {
+    try {
+      const payments = await this.getZTPayments();
+      const filtered = payments.filter(p => p.id !== id);
+      await AsyncStorage.setItem(ZT_PAYMENTS_KEY, JSON.stringify(filtered));
+
+      // Track deletion for sync
+      await this.trackDeletion('zt_payment', id);
+      this.scheduleBackup();
+    } catch (error) {
+      console.error('Error deleting ZT payment:', error);
+      throw error;
+    }
+  }
+
+  static async saveAllZTBalances(balances: ZTBalance[]) {
+    try {
+      await AsyncStorage.setItem(ZT_BALANCES_KEY, JSON.stringify(balances));
+    } catch (error) {
+      console.error('Error saving all ZT balances:', error);
+      throw error;
+    }
+  }
+
+  static async saveAllZTPayments(payments: ZTPayment[]) {
+    try {
+      await AsyncStorage.setItem(ZT_PAYMENTS_KEY, JSON.stringify(payments));
+    } catch (error) {
+      console.error('Error saving all ZT payments:', error);
+      throw error;
+    }
+  }
+
+  // Deletion tracking methods
+  static async trackDeletion(type: 'expense' | 'loan' | 'zt_balance' | 'zt_payment', id: string) {
+    try {
+      const deletionsStr = await AsyncStorage.getItem(DELETED_ITEMS_KEY);
+      const deletions = deletionsStr ? JSON.parse(deletionsStr) : {};
+
+      if (!deletions[type]) {
+        deletions[type] = [];
+      }
+
+      // Add to deletion list if not already there
+      if (!deletions[type].includes(id)) {
+        deletions[type].push(id);
+      }
+
+      await AsyncStorage.setItem(DELETED_ITEMS_KEY, JSON.stringify(deletions));
+    } catch (error) {
+      console.error('Error tracking deletion:', error);
+    }
+  }
+
+  static async getDeletedItems(): Promise<Record<string, string[]>> {
+    try {
+      const deletionsStr = await AsyncStorage.getItem(DELETED_ITEMS_KEY);
+      return deletionsStr ? JSON.parse(deletionsStr) : {};
+    } catch (error) {
+      console.error('Error getting deleted items:', error);
+      return {};
+    }
+  }
+
+  static async clearDeletedItems() {
+    try {
+      await AsyncStorage.removeItem(DELETED_ITEMS_KEY);
+    } catch (error) {
+      console.error('Error clearing deleted items:', error);
+    }
+  }
+
   // Clear all data
   static async clearAll() {
     try {
@@ -397,6 +592,8 @@ export class StorageService {
         LOANS_KEY,
         USERS_KEY,
         CURRENT_USER_KEY,
+        ZT_BALANCES_KEY,
+        ZT_PAYMENTS_KEY,
       ]);
       await this.init();
     } catch (error) {

@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState} from 'react';
 import {
   View,
   Text,
@@ -15,13 +15,12 @@ import {StorageService} from '../services/StorageService';
 import {Category, Subcategory} from '../types';
 import {useTheme} from '../contexts/ThemeContext';
 
-const EditCategoryScreen = ({navigation, route}: any) => {
-  const {category} = route.params;
+const AddCategoryScreen = ({navigation}: any) => {
   const {colors} = useTheme();
 
-  const [name, setName] = useState(category.name);
-  const [color, setColor] = useState(category.color || '#6B5FFF');
-  const [subcategories, setSubcategories] = useState<Subcategory[]>(category.subcategories || []);
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#6B5FFF');
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [showAddSubcategory, setShowAddSubcategory] = useState(false);
   const [newSubcategoryName, setNewSubcategoryName] = useState('');
   const [editingSubcategory, setEditingSubcategory] = useState<Subcategory | null>(null);
@@ -39,20 +38,20 @@ const EditCategoryScreen = ({navigation, route}: any) => {
     }
 
     try {
-      const updatedCategory: Category = {
-        ...category,
+      const newCategory: Category = {
+        id: `cat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: name.trim(),
         color,
         subcategories,
       };
 
-      await StorageService.updateCategory(updatedCategory);
-      Alert.alert('Success', 'Category updated successfully', [
+      await StorageService.addCategory(newCategory);
+      Alert.alert('Success', 'Category added successfully', [
         {text: 'OK', onPress: () => navigation.goBack()}
       ]);
     } catch (error) {
-      console.error('Failed to update category:', error);
-      Alert.alert('Error', 'Failed to update category');
+      console.error('Failed to add category:', error);
+      Alert.alert('Error', 'Failed to add category');
     }
   };
 
@@ -62,10 +61,11 @@ const EditCategoryScreen = ({navigation, route}: any) => {
       return;
     }
 
+    const tempCategoryId = `temp_${Date.now()}`;
     const newSubcategory: Subcategory = {
-      id: `${category.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `${tempCategoryId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: newSubcategoryName.trim(),
-      categoryId: category.id,
+      categoryId: tempCategoryId,
     };
 
     setSubcategories([...subcategories, newSubcategory]);
@@ -117,7 +117,7 @@ const EditCategoryScreen = ({navigation, route}: any) => {
           onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Category</Text>
+        <Text style={styles.headerTitle}>Add Category</Text>
         <View style={{width: 40}} />
       </LinearGradient>
 
@@ -196,7 +196,7 @@ const EditCategoryScreen = ({navigation, route}: any) => {
             colors={[color, color + 'DD']}
             style={styles.saveButtonGradient}>
             <Icon name="check" size={20} color="#FFF" />
-            <Text style={styles.saveButtonText}>Save Changes</Text>
+            <Text style={styles.saveButtonText}>Create Category</Text>
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -421,4 +421,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default EditCategoryScreen;
+export default AddCategoryScreen;

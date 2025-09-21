@@ -13,6 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import {Picker} from '@react-native-picker/picker';
 import RNFS from 'react-native-fs';
 import Share from 'react-native-share';
+import {useFocusEffect} from '@react-navigation/native';
 import {StorageService} from '../services/StorageService';
 import {CurrencyService, CURRENCIES} from '../services/CurrencyService';
 import GoogleAuthService from '../services/GoogleAuthService';
@@ -33,7 +34,30 @@ const SettingsScreen = ({navigation}: any) => {
 
   useEffect(() => {
     loadSettings();
+    // Restore Personal subcategories if missing
+    restorePersonalIfNeeded();
   }, []);
+
+  const restorePersonalIfNeeded = async () => {
+    const cats = await StorageService.getCategories();
+    const personal = cats.find(c => c.id === 'personal');
+    if (personal && (!personal.subcategories || personal.subcategories.length === 0)) {
+      await StorageService.restorePersonalSubcategories();
+      const updatedCats = await StorageService.getCategories();
+      setCategories(updatedCats);
+    }
+  };
+
+  // Reload categories when screen gets focus (e.g., after adding a new category)
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadCategories = async () => {
+        const cats = await StorageService.getCategories();
+        setCategories(cats);
+      };
+      loadCategories();
+    }, [])
+  );
 
   const loadSettings = async () => {
     const savedCurrency = await CurrencyService.getSelectedCurrency();
@@ -474,6 +498,41 @@ const SettingsScreen = ({navigation}: any) => {
       color: colors.textSecondary,
       marginRight: 8,
     },
+    restoreButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 4,
+      marginLeft: 8,
+    },
+    restoreButtonText: {
+      color: '#ffffff',
+      fontSize: 12,
+      fontWeight: '600',
+      marginLeft: 4,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    addCategoryButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      gap: 4,
+    },
+    addCategoryButtonText: {
+      color: '#FFF',
+      fontSize: 14,
+      fontWeight: '600',
+    },
   });
 
   return (
@@ -590,7 +649,15 @@ const SettingsScreen = ({navigation}: any) => {
 
       {/* Categories Management */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Categories</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Categories</Text>
+          <TouchableOpacity
+            style={styles.addCategoryButton}
+            onPress={() => navigation.navigate('AddCategory')}>
+            <Icon name="add" size={20} color="#FFF" />
+            <Text style={styles.addCategoryButtonText}>Add</Text>
+          </TouchableOpacity>
+        </View>
         {categories.map((category, index) => (
           <TouchableOpacity
             key={category.id}
@@ -608,9 +675,24 @@ const SettingsScreen = ({navigation}: any) => {
               />
               <Text style={styles.categoryName}>{category.name}</Text>
             </View>
-            <Text style={styles.subcategoryCount}>
-              {category.subcategories?.length || 0} subcategories
-            </Text>
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <Text style={styles.subcategoryCount}>
+                {category.subcategories?.length || 0} subcategories
+              </Text>
+              {category.id === 'personal' && (!category.subcategories || category.subcategories.length === 0) && (
+                <TouchableOpacity
+                  style={styles.restoreButton}
+                  onPress={async () => {
+                    await StorageService.restorePersonalSubcategories();
+                    const cats = await StorageService.getCategories();
+                    setCategories(cats);
+                    Alert.alert('Success', 'Personal subcategories restored!');
+                  }}>
+                  <Icon name="refresh" size={20} color="#ffffff" />
+                  <Text style={styles.restoreButtonText}>Restore</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <Icon name="chevron-right" size={24} color={colors.textSecondary} />
           </TouchableOpacity>
         ))}

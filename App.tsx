@@ -5,6 +5,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import HomeScreen from './src/screens/HomeScreen';
 import AddExpenseScreen from './src/screens/AddExpenseScreen';
 import EditExpenseScreen from './src/screens/EditExpenseScreen';
+import AddCategoryScreen from './src/screens/AddCategoryScreen';
 import EditCategoryScreen from './src/screens/EditCategoryScreen';
 import ExpenseListScreen from './src/screens/ExpenseListScreen';
 import SyncScreen from './src/screens/SyncScreen';
@@ -12,6 +13,7 @@ import ChartsScreen from './src/screens/ChartsScreen';
 import LoansScreen from './src/screens/LoansScreen';
 import CategoryDetailsScreen from './src/screens/CategoryDetailsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import ZTScreen from './src/screens/ZTScreen';
 import {StorageService} from './src/services/StorageService';
 import GoogleAuthService from './src/services/GoogleAuthService';
 import {ThemeProvider, useTheme} from './src/contexts/ThemeContext';
@@ -101,6 +103,13 @@ function AppContent(): React.JSX.Element {
             }}
           />
           <Stack.Screen
+            name="AddCategory"
+            component={AddCategoryScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
             name="EditCategory"
             component={EditCategoryScreen}
             options={{
@@ -136,6 +145,11 @@ function AppContent(): React.JSX.Element {
             name="Settings"
             component={SettingsScreen}
             options={{title: 'Settings'}}
+          />
+          <Stack.Screen
+            name="ZT"
+            component={ZTScreen}
+            options={{headerShown: false}}
           />
         </Stack.Navigator>
       </NavigationContainer>

@@ -29,6 +29,8 @@ const AddExpenseScreen = ({navigation}: any) => {
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showAddSubcategory, setShowAddSubcategory] = useState(false);
+  const [newSubcategoryName, setNewSubcategoryName] = useState('');
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -110,6 +112,39 @@ const AddExpenseScreen = ({navigation}: any) => {
       console.log(`[AddExpenseScreen] Current category: ${cat.name}, subcategories: ${cat.subcategories?.length || 0}`);
     }
     return cat;
+  };
+
+  const handleAddSubcategory = async () => {
+    if (!newSubcategoryName.trim()) {
+      Alert.alert('Error', 'Please enter a subcategory name');
+      return;
+    }
+
+    if (!selectedCategory) {
+      Alert.alert('Error', 'Please select a category first');
+      return;
+    }
+
+    try {
+      const newSubcategory = await StorageService.addSubcategory(selectedCategory, {
+        name: newSubcategoryName.trim()
+      });
+
+      // Reload categories to get updated subcategories
+      await loadCategories();
+
+      // Select the newly added subcategory
+      setSelectedSubcategory(newSubcategory.id);
+
+      // Reset and close modal
+      setNewSubcategoryName('');
+      setShowAddSubcategory(false);
+
+      Alert.alert('Success', 'Subcategory added successfully');
+    } catch (error) {
+      console.error('Error adding subcategory:', error);
+      Alert.alert('Error', 'Failed to add subcategory');
+    }
   };
 
   const currentCategory = getCurrentCategory();
@@ -288,12 +323,20 @@ const AddExpenseScreen = ({navigation}: any) => {
             </TouchableOpacity>
           </View>
 
-          {currentCategory?.subcategories && currentCategory.subcategories.length > 0 && (
+          {currentCategory && (
             <View style={styles.subcategorySection}>
-              <Text style={styles.sectionLabel}>Subcategory</Text>
+              <View style={styles.subcategoryHeader}>
+                <Text style={styles.sectionLabel}>Subcategory</Text>
+                <TouchableOpacity
+                  style={styles.addSubcategoryButton}
+                  onPress={() => setShowAddSubcategory(true)}>
+                  <Text style={styles.addSubcategoryText}>+ Add</Text>
+                </TouchableOpacity>
+              </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.subcategoryList}>
-                  {currentCategory.subcategories.map((sub) => (
+                  {currentCategory.subcategories && currentCategory.subcategories.length > 0 ? (
+                    currentCategory.subcategories.map((sub) => (
                     <TouchableOpacity
                       key={sub.id}
                       style={[
@@ -310,7 +353,10 @@ const AddExpenseScreen = ({navigation}: any) => {
                         {sub.name}
                       </Text>
                     </TouchableOpacity>
-                  ))}
+                  ))
+                  ) : (
+                    <Text style={styles.noSubcategoriesText}>No subcategories yet. Tap "+ Add" to create one.</Text>
+                  )}
                 </View>
               </ScrollView>
             </View>
@@ -361,6 +407,52 @@ const AddExpenseScreen = ({navigation}: any) => {
       </ScrollView>
 
       <CategoryModal />
+
+      {/* Add Subcategory Modal */}
+      <Modal
+        visible={showAddSubcategory}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddSubcategory(false)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowAddSubcategory(false)}>
+          <View style={styles.addSubcategoryModal} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>Add Subcategory</Text>
+            <Text style={styles.modalSubtitle}>
+              Adding to: {currentCategory?.name || 'Category'}
+            </Text>
+            <TextInput
+              style={styles.subcategoryInput}
+              value={newSubcategoryName}
+              onChangeText={setNewSubcategoryName}
+              placeholder="Subcategory name"
+              placeholderTextColor="#999"
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setShowAddSubcategory(false);
+                  setNewSubcategoryName('');
+                }}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton]}
+                onPress={handleAddSubcategory}>
+                <LinearGradient
+                  colors={['#6B5FFF', '#5147CC']}
+                  style={styles.confirmButtonGradient}>
+                  <Text style={styles.confirmButtonText}>Add</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -693,6 +785,83 @@ const styles = StyleSheet.create({
   },
   selectedSubcategoryChipText: {
     color: '#6B5FFF',
+  },
+  subcategoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  addSubcategoryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#6B5FFF',
+    borderRadius: 15,
+  },
+  addSubcategoryText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  noSubcategoriesText: {
+    color: '#999',
+    fontSize: 14,
+    fontStyle: 'italic',
+    paddingVertical: 10,
+  },
+  addSubcategoryModal: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 20,
+    alignItems: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 5,
+    marginBottom: 20,
+  },
+  subcategoryInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  modalButton: {
+    flex: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  cancelButton: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  confirmButton: {
+    overflow: 'hidden',
+  },
+  cancelButtonText: {
+    textAlign: 'center',
+    padding: 12,
+    fontSize: 15,
+    color: '#666',
+  },
+  confirmButtonGradient: {
+    padding: 12,
+  },
+  confirmButtonText: {
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFF',
   },
 });
 
