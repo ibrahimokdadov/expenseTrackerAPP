@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {Expense, Category, Subcategory, Loan, User, ZTBalance, ZTPayment} from '../types';
+import { Expense, Category, Subcategory, Loan, LoanHistoryEntry, User, ZTBalance, ZTPayment } from '../types';
 import GoogleSheetsService from './GoogleSheetsService';
 import GoogleAuthService from './GoogleAuthService';
 
@@ -27,14 +27,14 @@ export class StorageService {
       const personalCategory = categories.find(c => c.id === 'personal');
       if (personalCategory && (!personalCategory.subcategories || personalCategory.subcategories.length === 0)) {
         personalCategory.subcategories = [
-          {id: 'personal_transport', name: 'Transport', categoryId: 'personal'},
-          {id: 'personal_food', name: 'Food', categoryId: 'personal'},
-          {id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal'},
-          {id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal'},
-          {id: 'personal_shopping', name: 'Shopping', categoryId: 'personal'},
-          {id: 'personal_utilities', name: 'Utilities', categoryId: 'personal'},
-          {id: 'personal_education', name: 'Education', categoryId: 'personal'},
-          {id: 'personal_other', name: 'Other', categoryId: 'personal'},
+          { id: 'personal_transport', name: 'Transport', categoryId: 'personal' },
+          { id: 'personal_food', name: 'Food', categoryId: 'personal' },
+          { id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal' },
+          { id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal' },
+          { id: 'personal_shopping', name: 'Shopping', categoryId: 'personal' },
+          { id: 'personal_utilities', name: 'Utilities', categoryId: 'personal' },
+          { id: 'personal_education', name: 'Education', categoryId: 'personal' },
+          { id: 'personal_other', name: 'Other', categoryId: 'personal' },
         ];
         await this.saveCategories(categories);
         console.log('Added subcategories to Personal category');
@@ -62,29 +62,29 @@ export class StorageService {
 
   static async initializeDefaultCategories() {
     const defaultCategories: Category[] = [
-      {id: 'villa', name: 'Villa', color: '#FF6B6B', subcategories: []},
-      {id: 'khodem', name: 'Khodem', color: '#4ECDC4', subcategories: []},
-      {id: 'apartment', name: 'Apartment', color: '#45B7D1', subcategories: []},
-      {id: 'wahiba', name: 'Wahiba', color: '#96CEB4', subcategories: []},
-      {id: 'khadija', name: 'Khadija', color: '#FFEAA7', subcategories: []},
-      {id: 'youcef', name: 'Youcef', color: '#DDA0DD', subcategories: []},
-      {id: 'syakhn', name: 'Syakhn', color: '#98D8C8', subcategories: []},
-      {id: 'ouled_djellal', name: 'Ouled Djellal', color: '#FFB6C1', subcategories: []},
-      {id: 'imane_djebabra', name: 'Imane Djebabra', color: '#87CEEB', subcategories: []},
-      {id: 'a_milka', name: 'A Milka', color: '#DEB887', subcategories: []},
+      { id: 'villa', name: 'Villa', color: '#FF6B6B', subcategories: [] },
+      { id: 'khodem', name: 'Khodem', color: '#4ECDC4', subcategories: [] },
+      { id: 'apartment', name: 'Apartment', color: '#45B7D1', subcategories: [] },
+      { id: 'wahiba', name: 'Wahiba', color: '#96CEB4', subcategories: [] },
+      { id: 'khadija', name: 'Khadija', color: '#FFEAA7', subcategories: [] },
+      { id: 'youcef', name: 'Youcef', color: '#DDA0DD', subcategories: [] },
+      { id: 'syakhn', name: 'Syakhn', color: '#98D8C8', subcategories: [] },
+      { id: 'ouled_djellal', name: 'Ouled Djellal', color: '#FFB6C1', subcategories: [] },
+      { id: 'imane_djebabra', name: 'Imane Djebabra', color: '#87CEEB', subcategories: [] },
+      { id: 'a_milka', name: 'A Milka', color: '#DEB887', subcategories: [] },
       {
         id: 'personal',
         name: 'Personal',
         color: '#667EEA',
         subcategories: [
-          {id: 'personal_transport', name: 'Transport', categoryId: 'personal'},
-          {id: 'personal_food', name: 'Food', categoryId: 'personal'},
-          {id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal'},
-          {id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal'},
-          {id: 'personal_shopping', name: 'Shopping', categoryId: 'personal'},
-          {id: 'personal_utilities', name: 'Utilities', categoryId: 'personal'},
-          {id: 'personal_education', name: 'Education', categoryId: 'personal'},
-          {id: 'personal_other', name: 'Other', categoryId: 'personal'},
+          { id: 'personal_transport', name: 'Transport', categoryId: 'personal' },
+          { id: 'personal_food', name: 'Food', categoryId: 'personal' },
+          { id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal' },
+          { id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal' },
+          { id: 'personal_shopping', name: 'Shopping', categoryId: 'personal' },
+          { id: 'personal_utilities', name: 'Utilities', categoryId: 'personal' },
+          { id: 'personal_education', name: 'Education', categoryId: 'personal' },
+          { id: 'personal_other', name: 'Other', categoryId: 'personal' },
         ],
       },
     ];
@@ -254,14 +254,14 @@ export class StorageService {
 
       if (personalIndex !== -1) {
         categories[personalIndex].subcategories = [
-          {id: 'personal_transport', name: 'Transport', categoryId: 'personal'},
-          {id: 'personal_food', name: 'Food', categoryId: 'personal'},
-          {id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal'},
-          {id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal'},
-          {id: 'personal_shopping', name: 'Shopping', categoryId: 'personal'},
-          {id: 'personal_utilities', name: 'Utilities', categoryId: 'personal'},
-          {id: 'personal_education', name: 'Education', categoryId: 'personal'},
-          {id: 'personal_other', name: 'Other', categoryId: 'personal'},
+          { id: 'personal_transport', name: 'Transport', categoryId: 'personal' },
+          { id: 'personal_food', name: 'Food', categoryId: 'personal' },
+          { id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal' },
+          { id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal' },
+          { id: 'personal_shopping', name: 'Shopping', categoryId: 'personal' },
+          { id: 'personal_utilities', name: 'Utilities', categoryId: 'personal' },
+          { id: 'personal_education', name: 'Education', categoryId: 'personal' },
+          { id: 'personal_other', name: 'Other', categoryId: 'personal' },
         ];
         await this.saveCategories(categories);
         console.log('Restored Personal category subcategories');
@@ -363,11 +363,52 @@ export class StorageService {
       const loans = await this.getLoans();
       const index = loans.findIndex(l => l.id === id);
       if (index !== -1) {
-        loans[index] = {...loans[index], ...updates};
+        const currentLoan = loans[index];
+
+        // Create history entry if amount or description is being changed
+        const historyEntry: LoanHistoryEntry | null =
+          (updates.amount !== undefined && updates.amount !== currentLoan.amount) ||
+            (updates.description !== undefined && updates.description !== currentLoan.description)
+            ? {
+              date: new Date().toISOString(),
+              ...(updates.amount !== undefined && updates.amount !== currentLoan.amount
+                ? { amount: updates.amount, previousAmount: currentLoan.amount }
+                : {}),
+              ...(updates.description !== undefined && updates.description !== currentLoan.description
+                ? { description: updates.description, previousDescription: currentLoan.description }
+                : {}),
+            }
+            : null;
+
+        // Initialize history array if it doesn't exist
+        if (!currentLoan.history) {
+          currentLoan.history = [];
+        }
+
+        // Add history entry if there are changes to track
+        if (historyEntry) {
+          currentLoan.history.push(historyEntry);
+        }
+
+        // Apply updates
+        loans[index] = { ...currentLoan, ...updates };
+
         if (updates.status === 'fulfilled' && !loans[index].dateFulfilled) {
           loans[index].dateFulfilled = new Date().toISOString();
         }
+
+        // Mark as pending sync to prioritize local changes
+        loans[index].syncStatus = 'pending';
+
         await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(loans));
+        console.log(`[StorageService] Updated loan ${id} with status: ${updates.status}`);
+        if (historyEntry) {
+          console.log(`[StorageService] Added history entry for loan ${id}`);
+        }
+
+        // Trigger backup to sync changes to sheets
+        this.scheduleBackup();
+
         return loans[index];
       }
       throw new Error('Loan not found');

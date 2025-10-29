@@ -35,6 +35,14 @@ export interface Expense {
   syncStatus: 'pending' | 'synced' | 'conflict';
 }
 
+export interface LoanHistoryEntry {
+  date: string;
+  amount?: number;
+  description?: string;
+  previousAmount?: number;
+  previousDescription?: string;
+}
+
 export interface Loan {
   id: string;
   amount: number;
@@ -48,6 +56,7 @@ export interface Loan {
   category?: string;
   localId: string;
   syncStatus: 'pending' | 'synced' | 'conflict';
+  history?: LoanHistoryEntry[];
 }
 
 export interface User {

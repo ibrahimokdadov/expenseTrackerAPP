@@ -1,6 +1,6 @@
-import {Expense, ConflictItem, Loan, Category, ZTBalance, ZTPayment} from '../types';
+import { Expense, ConflictItem, Loan, LoanHistoryEntry, Category, ZTBalance, ZTPayment } from '../types';
 import GoogleAuthService from './GoogleAuthService';
-import {StorageService} from './StorageService';
+import { StorageService } from './StorageService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SHEETS_API_BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -183,6 +183,16 @@ export class GoogleSheetsService {
                 },
               },
             },
+            {
+              properties: {
+                sheetId: 6,
+                title: 'LoanHistory',
+                gridProperties: {
+                  rowCount: 5000,
+                  columnCount: 5,
+                },
+              },
+            },
           ],
         }),
       });
@@ -228,15 +238,15 @@ export class GoogleSheetsService {
             rows: [
               {
                 values: [
-                  {userEnteredValue: {stringValue: 'ID'}},
-                  {userEnteredValue: {stringValue: 'Date'}},
-                  {userEnteredValue: {stringValue: 'Amount'}},
-                  {userEnteredValue: {stringValue: 'Category'}},
-                  {userEnteredValue: {stringValue: 'Sub_Category'}},
-                  {userEnteredValue: {stringValue: 'Description'}},
-                  {userEnteredValue: {stringValue: 'Currency'}},
-                  {userEnteredValue: {stringValue: 'Timestamp'}},
-                  {userEnteredValue: {stringValue: 'SyncStatus'}},
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Date' } },
+                  { userEnteredValue: { stringValue: 'Amount' } },
+                  { userEnteredValue: { stringValue: 'Category' } },
+                  { userEnteredValue: { stringValue: 'Sub_Category' } },
+                  { userEnteredValue: { stringValue: 'Description' } },
+                  { userEnteredValue: { stringValue: 'Currency' } },
+                  { userEnteredValue: { stringValue: 'Timestamp' } },
+                  { userEnteredValue: { stringValue: 'SyncStatus' } },
                 ],
               },
             ],
@@ -256,13 +266,13 @@ export class GoogleSheetsService {
             rows: [
               {
                 values: [
-                  {userEnteredValue: {stringValue: 'ID'}},
-                  {userEnteredValue: {stringValue: 'Person'}},
-                  {userEnteredValue: {stringValue: 'Amount'}},
-                  {userEnteredValue: {stringValue: 'Type'}},
-                  {userEnteredValue: {stringValue: 'Date'}},
-                  {userEnteredValue: {stringValue: 'Status'}},
-                  {userEnteredValue: {stringValue: 'Notes'}},
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Person' } },
+                  { userEnteredValue: { stringValue: 'Amount' } },
+                  { userEnteredValue: { stringValue: 'Type' } },
+                  { userEnteredValue: { stringValue: 'Date' } },
+                  { userEnteredValue: { stringValue: 'Status' } },
+                  { userEnteredValue: { stringValue: 'Notes' } },
                 ],
               },
             ],
@@ -282,10 +292,10 @@ export class GoogleSheetsService {
             rows: [
               {
                 values: [
-                  {userEnteredValue: {stringValue: 'ID'}},
-                  {userEnteredValue: {stringValue: 'Name'}},
-                  {userEnteredValue: {stringValue: 'Budget'}},
-                  {userEnteredValue: {stringValue: 'Color'}},
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Name' } },
+                  { userEnteredValue: { stringValue: 'Budget' } },
+                  { userEnteredValue: { stringValue: 'Color' } },
                 ],
               },
             ],
@@ -305,11 +315,11 @@ export class GoogleSheetsService {
             rows: [
               {
                 values: [
-                  {userEnteredValue: {stringValue: 'ID'}},
-                  {userEnteredValue: {stringValue: 'Owner'}},
-                  {userEnteredValue: {stringValue: 'Value'}},
-                  {userEnteredValue: {stringValue: 'Year'}},
-                  {userEnteredValue: {stringValue: 'DateAdded'}},
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Owner' } },
+                  { userEnteredValue: { stringValue: 'Value' } },
+                  { userEnteredValue: { stringValue: 'Year' } },
+                  { userEnteredValue: { stringValue: 'DateAdded' } },
                 ],
               },
             ],
@@ -329,10 +339,10 @@ export class GoogleSheetsService {
             rows: [
               {
                 values: [
-                  {userEnteredValue: {stringValue: 'ID'}},
-                  {userEnteredValue: {stringValue: 'Amount'}},
-                  {userEnteredValue: {stringValue: 'Purpose'}},
-                  {userEnteredValue: {stringValue: 'Date'}},
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Amount' } },
+                  { userEnteredValue: { stringValue: 'Purpose' } },
+                  { userEnteredValue: { stringValue: 'Date' } },
                 ],
               },
             ],
@@ -352,14 +362,38 @@ export class GoogleSheetsService {
             rows: [
               {
                 values: [
-                  {userEnteredValue: {stringValue: 'Key'}},
-                  {userEnteredValue: {stringValue: 'Value'}},
+                  { userEnteredValue: { stringValue: 'Key' } },
+                  { userEnteredValue: { stringValue: 'Value' } },
                 ],
               },
               {
                 values: [
-                  {userEnteredValue: {stringValue: 'LastSync'}},
-                  {userEnteredValue: {stringValue: new Date().toISOString()}},
+                  { userEnteredValue: { stringValue: 'LastSync' } },
+                  { userEnteredValue: { stringValue: new Date().toISOString() } },
+                ],
+              },
+            ],
+            fields: 'userEnteredValue',
+          },
+        },
+        // LoanHistory headers
+        {
+          updateCells: {
+            range: {
+              sheetId: 6,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 5,
+            },
+            rows: [
+              {
+                values: [
+                  { userEnteredValue: { stringValue: 'LoanID' } },
+                  { userEnteredValue: { stringValue: 'Date' } },
+                  { userEnteredValue: { stringValue: 'Field' } },
+                  { userEnteredValue: { stringValue: 'OldValue' } },
+                  { userEnteredValue: { stringValue: 'NewValue' } },
                 ],
               },
             ],
@@ -511,15 +545,15 @@ export class GoogleSheetsService {
 
       const values = loans.map(loan => [
         loan.id,
-        loan.person,
+        `${loan.giver} to ${loan.receiver}`, // Combine giver and receiver
         loan.amount.toString(),
-        loan.type,
-        loan.date,
+        loan.giver === 'Me' ? 'given' : 'received', // Determine type based on giver
+        loan.dateCreated ? loan.dateCreated.split('T')[0] : '', // Format date
         loan.status,
-        loan.notes || '',
+        loan.description || '', // Use description field
       ]);
 
-      // Clear and update
+      // Clear and update loans
       await fetch(
         `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Loans!A2:G:clear`,
         {
@@ -543,6 +577,104 @@ export class GoogleSheetsService {
           }),
         }
       );
+
+      if (!response.ok) {
+        console.error('[syncLoans] Failed to sync loans data');
+        return false;
+      }
+
+      // Sync loan history to LoanHistory sheet
+      try {
+        // Collect all history entries from all loans
+        const historyRows: string[][] = [];
+
+        for (const loan of loans) {
+          if (loan.history && loan.history.length > 0) {
+            for (const entry of loan.history) {
+              // If amount changed, write a row
+              if (entry.amount !== undefined && entry.previousAmount !== undefined) {
+                historyRows.push([
+                  loan.id,
+                  entry.date || new Date().toISOString(),
+                  'amount',
+                  entry.previousAmount.toString(),
+                  entry.amount.toString(),
+                ]);
+              }
+              // If description changed, write a row
+              if (entry.description !== undefined && entry.previousDescription !== undefined) {
+                historyRows.push([
+                  loan.id,
+                  entry.date || new Date().toISOString(),
+                  'description',
+                  entry.previousDescription || '',
+                  entry.description || '',
+                ]);
+              }
+            }
+          }
+        }
+
+        // Clear LoanHistory sheet completely (idempotent sync)
+        await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/LoanHistory!A2:E:clear`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        // Calculate expected history entry count for validation
+        let expectedHistoryCount = 0;
+        for (const loan of loans) {
+          if (loan.history && loan.history.length > 0) {
+            for (const entry of loan.history) {
+              if (entry.amount !== undefined && entry.previousAmount !== undefined) expectedHistoryCount++;
+              if (entry.description !== undefined && entry.previousDescription !== undefined) expectedHistoryCount++;
+            }
+          }
+        }
+
+        // Write all history rows at once
+        if (historyRows.length > 0) {
+          // Validate data integrity: row count should match expected
+          if (historyRows.length !== expectedHistoryCount) {
+            console.warn(
+              `[syncLoans] History count mismatch: expected ${expectedHistoryCount} entries, found ${historyRows.length} rows`
+            );
+          }
+
+          const historyResponse = await fetch(
+            `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/LoanHistory!A2:E?valueInputOption=USER_ENTERED`,
+            {
+              method: 'PUT',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                values: historyRows,
+              }),
+            }
+          );
+
+          if (!historyResponse.ok) {
+            const errorText = await historyResponse.text().catch(() => 'Unknown error');
+            console.warn('[syncLoans] Failed to sync loan history, but loans were synced successfully');
+            console.warn(`[syncLoans] History sync error: ${errorText}`);
+          } else {
+            console.log(`[syncLoans] Successfully synced ${historyRows.length} history entries for ${loans.length} loans`);
+          }
+        } else {
+          console.log('[syncLoans] No history entries to sync');
+        }
+      } catch (historyError) {
+        // Don't fail the entire sync if history sync fails
+        console.error('[syncLoans] Error syncing loan history:', historyError);
+        console.warn('[syncLoans] Continuing despite history sync error');
+      }
 
       return response.ok;
     } catch (error) {
@@ -755,7 +887,7 @@ export class GoogleSheetsService {
     return null;
   }
 
-  static async getSheetInfo(): Promise<{id: string, url: string, created: string} | null> {
+  static async getSheetInfo(): Promise<{ id: string, url: string, created: string } | null> {
     if (this.sheetInfo) {
       return {
         id: this.sheetInfo.spreadsheetId,
@@ -909,8 +1041,8 @@ export class GoogleSheetsService {
   private static async mergeExpenses(
     localExpenses: Expense[],
     remoteExpenses: Expense[]
-  ): Promise<{uploaded: number; downloaded: number; conflicts: number}> {
-    const result = {uploaded: 0, downloaded: 0, conflicts: 0};
+  ): Promise<{ uploaded: number; downloaded: number; conflicts: number }> {
+    const result = { uploaded: 0, downloaded: 0, conflicts: 0 };
     const localMap = new Map(localExpenses.map(e => [e.id || e.localId, e]));
     const remoteMap = new Map(remoteExpenses.map(e => [e.id, e]));
     const mergedExpenses: Expense[] = [];
@@ -1054,27 +1186,87 @@ export class GoogleSheetsService {
   private static async mergeLoans(
     localLoans: Loan[],
     remoteLoans: Loan[]
-  ): Promise<{uploaded: number; downloaded: number; conflicts: number}> {
-    const result = {uploaded: 0, downloaded: 0, conflicts: 0};
+  ): Promise<{ uploaded: number; downloaded: number; conflicts: number }> {
+    const result = { uploaded: 0, downloaded: 0, conflicts: 0 };
     const localMap = new Map(localLoans.map(l => [l.id, l]));
     const remoteMap = new Map(remoteLoans.map(l => [l.id, l]));
     const mergedLoans: Loan[] = [];
 
+    // Get list of deleted items to avoid re-downloading them
+    const deletedItems = await StorageService.getDeletedItems();
+    const deletedLoanIds = new Set(deletedItems.loan || []);
+
     // Process remote loans
     for (const remoteLoan of remoteLoans) {
       const localLoan = localMap.get(remoteLoan.id);
+
+      // Skip this loan if it was deleted locally
+      if (deletedLoanIds.has(remoteLoan.id)) {
+        console.log(`[mergeLoans] Skipping deleted loan: ${remoteLoan.id}`);
+        continue;
+      }
 
       if (!localLoan) {
         // New loan from remote
         mergedLoans.push(remoteLoan);
         result.downloaded++;
       } else {
-        // Loan exists locally - use remote if status differs
-        if (remoteLoan.status !== localLoan.status) {
-          mergedLoans.push(remoteLoan);
-          result.conflicts++;
+        // Loan exists locally - merge history and prefer local changes
+        const mergedLoan = { ...localLoan };
+
+        // Merge history arrays chronologically, preserving all entries
+        if (localLoan.history || remoteLoan.history) {
+          const localHistory = localLoan.history || [];
+          const remoteHistory = remoteLoan.history || [];
+
+          // Merge entries by date (same date entries are combined)
+          const historyMap = new Map<string, LoanHistoryEntry>();
+
+          // Add local history
+          for (const entry of localHistory) {
+            const dateKey = entry.date;
+            const existing = historyMap.get(dateKey);
+            if (existing) {
+              // Merge fields from existing entry with new entry
+              historyMap.set(dateKey, { ...existing, ...entry });
+            } else {
+              historyMap.set(dateKey, { ...entry });
+            }
+          }
+
+          // Add remote history (merge with local if same date)
+          for (const entry of remoteHistory) {
+            const dateKey = entry.date;
+            const existing = historyMap.get(dateKey);
+            if (existing) {
+              // Merge fields from remote into existing entry (preserve all changes)
+              historyMap.set(dateKey, { ...existing, ...entry });
+            } else {
+              historyMap.set(dateKey, { ...entry });
+            }
+          }
+
+          // Convert back to array and sort chronologically
+          mergedLoan.history = Array.from(historyMap.values()).sort(
+            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+          );
+
+          console.log(`[mergeLoans] Merged history for loan ${localLoan.id}: ${localHistory.length} local + ${remoteHistory.length} remote = ${mergedLoan.history.length} merged`);
+        }
+
+        // Prefer local changes for status (user just marked as paid)
+        // This prevents sync from undoing recent status changes
+        const shouldUseLocal = localLoan.dateFulfilled !== undefined ||
+          localLoan.syncStatus === 'pending' ||
+          remoteLoan.status === localLoan.status;
+
+        if (shouldUseLocal) {
+          mergedLoans.push(mergedLoan);
         } else {
-          mergedLoans.push(localLoan);
+          // Remote status is different and local hasn't been updated recently
+          // But still preserve merged history
+          mergedLoans.push({ ...remoteLoan, history: mergedLoan.history });
+          result.conflicts++;
         }
         localMap.delete(remoteLoan.id);
       }
@@ -1096,8 +1288,8 @@ export class GoogleSheetsService {
   private static async mergeCategories(
     localCategories: Category[],
     remoteCategories: Category[]
-  ): Promise<{uploaded: number; downloaded: number}> {
-    const result = {uploaded: 0, downloaded: 0};
+  ): Promise<{ uploaded: number; downloaded: number }> {
+    const result = { uploaded: 0, downloaded: 0 };
     const localMap = new Map(localCategories.map(c => [c.id, c]));
     const remoteMap = new Map(remoteCategories.map(c => [c.id, c]));
     const mergedCategories: Category[] = [];
@@ -1127,8 +1319,8 @@ export class GoogleSheetsService {
   private static async mergeZTBalances(
     localBalances: ZTBalance[],
     remoteBalances: ZTBalance[]
-  ): Promise<{uploaded: number; downloaded: number}> {
-    const result = {uploaded: 0, downloaded: 0};
+  ): Promise<{ uploaded: number; downloaded: number }> {
+    const result = { uploaded: 0, downloaded: 0 };
     const localMap = new Map(localBalances.map(b => [b.id, b]));
     const remoteMap = new Map(remoteBalances.map(b => [b.id, b]));
     const mergedBalances: ZTBalance[] = [];
@@ -1158,8 +1350,8 @@ export class GoogleSheetsService {
   private static async mergeZTPayments(
     localPayments: ZTPayment[],
     remotePayments: ZTPayment[]
-  ): Promise<{uploaded: number; downloaded: number}> {
-    const result = {uploaded: 0, downloaded: 0};
+  ): Promise<{ uploaded: number; downloaded: number }> {
+    const result = { uploaded: 0, downloaded: 0 };
     const localMap = new Map(localPayments.map(p => [p.id, p]));
     const remoteMap = new Map(remotePayments.map(p => [p.id, p]));
     const mergedPayments: ZTPayment[] = [];
@@ -1186,7 +1378,7 @@ export class GoogleSheetsService {
     return result;
   }
 
-  private static async fetchRemoteData(): Promise<{expenses: Expense[], loans: Loan[], categories: Category[], ztBalances?: ZTBalance[], ztPayments?: ZTPayment[]} | null> {
+  private static async fetchRemoteData(): Promise<{ expenses: Expense[], loans: Loan[], categories: Category[], ztBalances?: ZTBalance[], ztPayments?: ZTPayment[] } | null> {
     try {
       if (!this.sheetInfo) {
         console.log('[fetchRemoteData] No sheet info available');
@@ -1202,7 +1394,7 @@ export class GoogleSheetsService {
       console.log('[fetchRemoteData] Fetching from spreadsheet:', this.sheetInfo.spreadsheetId);
 
       // Fetch all data from sheets
-      const [expensesRes, loansRes, categoriesRes, ztBalancesRes, ztPaymentsRes] = await Promise.all([
+      const [expensesRes, loansRes, categoriesRes, ztBalancesRes, ztPaymentsRes, loanHistoryRes] = await Promise.all([
         fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:I`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
@@ -1218,6 +1410,9 @@ export class GoogleSheetsService {
         fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Payments!A2:D`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/LoanHistory!A2:E`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
       ]);
 
       console.log('[fetchRemoteData] API responses:', {
@@ -1226,14 +1421,16 @@ export class GoogleSheetsService {
         categories: `${categoriesRes.status} ${categoriesRes.ok ? 'OK' : 'FAILED'}`,
         ztBalances: `${ztBalancesRes.status} ${ztBalancesRes.ok ? 'OK' : 'FAILED'}`,
         ztPayments: `${ztPaymentsRes.status} ${ztPaymentsRes.ok ? 'OK' : 'FAILED'}`,
+        loanHistory: `${loanHistoryRes.status} ${loanHistoryRes.ok ? 'OK' : 'FAILED'}`,
       });
 
-      const [expensesData, loansData, categoriesData, ztBalancesData, ztPaymentsData] = await Promise.all([
+      const [expensesData, loansData, categoriesData, ztBalancesData, ztPaymentsData, loanHistoryData] = await Promise.all([
         expensesRes.json(),
         loansRes.json(),
         categoriesRes.json(),
         ztBalancesRes.json(),
         ztPaymentsRes.json(),
+        loanHistoryRes.ok ? loanHistoryRes.json() : Promise.resolve({ values: [] }),
       ]);
 
       console.log('[fetchRemoteData] Raw data:', {
@@ -1242,6 +1439,7 @@ export class GoogleSheetsService {
         categories: categoriesData.values ? `${categoriesData.values.length} rows` : 'No values',
         ztBalances: ztBalancesData.values ? `${ztBalancesData.values.length} rows` : 'No values',
         ztPayments: ztPaymentsData.values ? `${ztPaymentsData.values.length} rows` : 'No values',
+        loanHistory: loanHistoryData.values ? `${loanHistoryData.values.length} rows` : 'No values',
       });
 
       // Parse expenses
@@ -1257,19 +1455,93 @@ export class GoogleSheetsService {
         syncStatus: 'synced',
       }));
 
-      // Parse loans - fixed field names to match Loan type
-      const loans: Loan[] = (loansData.values || []).map((row: any[]) => ({
-        id: row[0],
-        person: row[1],  // Fixed: was 'personName', should be 'person'
-        amount: parseFloat(row[2] || '0'),
-        type: row[3] as 'given' | 'taken',  // Fixed: order and values
-        date: row[4],
-        status: row[5] as 'pending' | 'paid',  // Fixed: values to match type
-        notes: row[6],  // Fixed: was 'description', should be 'notes'
-        dateCreated: row[4],  // Add required field
-        localId: row[0],  // Add required field
-        syncStatus: 'synced' as const,  // Add required field
-      }));
+      // Parse loan history - group by LoanID and merge entries with same date
+      const historyByLoanId = new Map<string, LoanHistoryEntry[]>();
+
+      // Handle LoanHistory sheet gracefully - it might not exist for older spreadsheets
+      if (!loanHistoryRes.ok) {
+        console.log('[fetchRemoteData] LoanHistory sheet not found or inaccessible - will be created on next sync');
+      } else if (loanHistoryData.values && loanHistoryData.values.length > 0) {
+        // First pass: group by loanId and date
+        const entriesByLoanAndDate = new Map<string, LoanHistoryEntry>();
+        const dateKey = (loanId: string, date: string) => `${loanId}|${date}`;
+
+        for (const row of loanHistoryData.values) {
+          const loanId = row[0];
+          if (!loanId) continue;
+
+          const date = row[1] || new Date().toISOString();
+          const field = row[2] || '';
+          const oldValue = row[3] || '';
+          const newValue = row[4] || '';
+
+          const key = dateKey(loanId, date);
+          let entry = entriesByLoanAndDate.get(key);
+
+          if (!entry) {
+            entry = { date };
+            entriesByLoanAndDate.set(key, entry);
+          }
+
+          // Add field change to entry (same entry can have both amount and description)
+          if (field === 'amount') {
+            entry.amount = parseFloat(newValue);
+            entry.previousAmount = parseFloat(oldValue);
+          } else if (field === 'description') {
+            entry.description = newValue;
+            entry.previousDescription = oldValue;
+          }
+        }
+
+        // Second pass: group by loanId
+        for (const [key, entry] of entriesByLoanAndDate.entries()) {
+          const [loanId] = key.split('|');
+          if (!historyByLoanId.has(loanId)) {
+            historyByLoanId.set(loanId, []);
+          }
+          historyByLoanId.get(loanId)!.push(entry);
+        }
+
+        // Sort each loan's history chronologically
+        for (const [loanId, entries] of historyByLoanId.entries()) {
+          entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        }
+
+        console.log(`[fetchRemoteData] Loaded history for ${historyByLoanId.size} loans (${loanHistoryData.values.length} history rows)`);
+      }
+
+      // Parse loans - map sheet columns to Loan type
+      const loans: Loan[] = (loansData.values || []).map((row: any[]) => {
+        // Parse the person string (e.g., "Me to John" or "John to Me")
+        const personStr = row[1] || '';
+        const [giver, receiver] = personStr.includes(' to ')
+          ? personStr.split(' to ').map(s => s.trim())
+          : ['', 'Me'];
+
+        // Parse date if available
+        const dateStr = row[4] || '';
+        const dateCreated = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
+
+        // Map status
+        const status = row[5] === 'fulfilled' ? 'fulfilled' : 'pending';
+
+        const loanId = row[0];
+        const history = historyByLoanId.get(loanId) || [];
+
+        return {
+          id: loanId,
+          giver: giver || 'Unknown',
+          receiver: receiver || 'Unknown',
+          amount: parseFloat(row[2] || '0'),
+          description: row[6] || '', // notes column becomes description
+          status: status,
+          dateCreated: dateCreated,
+          dateFulfilled: status === 'fulfilled' ? dateCreated : undefined,
+          localId: `loan_${loanId}`,
+          syncStatus: 'synced' as const,
+          history: history.length > 0 ? history : undefined,
+        };
+      });
 
       // Parse categories
       const categories: Category[] = (categoriesData.values || []).map((row: any[]) => ({
@@ -1303,7 +1575,7 @@ export class GoogleSheetsService {
     }
   }
 
-  static async restoreFromBackup(): Promise<{expenses: Expense[], loans: Loan[], categories: Category[]} | null> {
+  static async restoreFromBackup(): Promise<{ expenses: Expense[], loans: Loan[], categories: Category[] } | null> {
     try {
       if (!this.sheetInfo) {
         await this.initialize();
@@ -1637,6 +1909,22 @@ export class GoogleSheetsService {
         });
       }
 
+      // Check if LoanHistory sheet exists
+      if (!existingSheets.includes('LoanHistory')) {
+        console.log('[ensureZTSheetsExist] Creating LoanHistory sheet');
+        requests.push({
+          addSheet: {
+            properties: {
+              title: 'LoanHistory',
+              gridProperties: {
+                rowCount: 5000,
+                columnCount: 5,
+              },
+            },
+          },
+        });
+      }
+
       // If we have sheets to add, send the batch update request
       if (requests.length > 0) {
         const batchUpdateResponse = await fetch(
@@ -1700,7 +1988,22 @@ export class GoogleSheetsService {
         }
       );
 
-      console.log('[setupZTSheetHeaders] Headers added to ZT sheets');
+      // Set headers for LoanHistory
+      await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/LoanHistory!A1:E1?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            values: [['LoanID', 'Date', 'Field', 'OldValue', 'NewValue']],
+          }),
+        }
+      );
+
+      console.log('[setupZTSheetHeaders] Headers added to ZT sheets and LoanHistory');
     } catch (error) {
       console.error('[setupZTSheetHeaders] Failed to setup headers:', error);
     }

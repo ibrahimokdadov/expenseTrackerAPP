@@ -18,7 +18,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import {StorageService} from '../services/StorageService';
 import {CurrencyService} from '../services/CurrencyService';
-import {Expense, Category} from '../types';
+import {Expense, Category, Currency} from '../types';
 
 const {width} = Dimensions.get('window');
 
@@ -30,6 +30,7 @@ const ExpenseListScreen = ({navigation}: any) => {
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year' | 'all'>('month');
   const [searchText, setSearchText] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [currency, setCurrency] = useState<Currency>('DZD');
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -51,10 +52,13 @@ const ExpenseListScreen = ({navigation}: any) => {
   }, []);
 
   const loadData = async () => {
-    const [expensesData, categoriesData] = await Promise.all([
+    const [expensesData, categoriesData, savedCurrency] = await Promise.all([
       StorageService.getExpenses(),
       StorageService.getCategories(),
+      CurrencyService.getSelectedCurrency(),
     ]);
+
+    setCurrency(savedCurrency);
 
     const sorted = expensesData.sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -260,7 +264,7 @@ const ExpenseListScreen = ({navigation}: any) => {
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <Text style={styles.sectionTotal}>
-        {CurrencyService.formatAmount(total, 'DZD')}
+        {CurrencyService.formatAmount(total, currency)}
       </Text>
     </View>
   );
@@ -324,7 +328,7 @@ const ExpenseListScreen = ({navigation}: any) => {
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {CurrencyService.formatAmount(totalAmount, 'DZD')}
+              {CurrencyService.formatAmount(totalAmount, currency)}
             </Text>
             <Text style={styles.statLabel}>Total Spent</Text>
           </View>
@@ -336,7 +340,7 @@ const ExpenseListScreen = ({navigation}: any) => {
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {CurrencyService.formatAmount(averageAmount, 'DZD')}
+              {CurrencyService.formatAmount(averageAmount, currency)}
             </Text>
             <Text style={styles.statLabel}>Average</Text>
           </View>

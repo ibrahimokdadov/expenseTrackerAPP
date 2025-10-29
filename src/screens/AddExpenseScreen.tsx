@@ -193,10 +193,6 @@ const AddExpenseScreen = ({navigation}: any) => {
                     selectedCategory === cat.id && styles.selectedCategoryOption,
                   ]}
                   onPress={() => {
-                    // Only reset subcategory if switching to a different category
-                    if (selectedCategory !== cat.id) {
-                      setSelectedSubcategory('');
-                    }
                     setSelectedCategory(cat.id);
                     setShowCategoryModal(false);
                   }}

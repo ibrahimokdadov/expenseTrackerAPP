@@ -10,6 +10,7 @@ import {
   StatusBar,
   Animated,
   Modal,
+  SafeAreaView,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -328,7 +329,7 @@ const HomeScreen = ({navigation}: any) => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar backgroundColor="#f7f9fc" barStyle="dark-content" />
 
       <LinearGradient
@@ -670,7 +671,13 @@ const HomeScreen = ({navigation}: any) => {
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
-      <View style={[styles.bottomNav, {paddingBottom: insets.bottom > 0 ? insets.bottom : 12}]}>
+      <View style={[
+        styles.bottomNav,
+        {
+          paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 24,
+          bottom: 0
+        }
+      ]}>
         <TouchableOpacity style={styles.navItem}>
           <Text style={[styles.navIcon, styles.navActive]}>🏠</Text>
         </TouchableOpacity>
@@ -768,7 +775,7 @@ const HomeScreen = ({navigation}: any) => {
           </View>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -1244,12 +1251,20 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: 'white',
     flexDirection: 'row',
-    paddingVertical: 12,
+    paddingTop: 12,
     paddingHorizontal: 20,
     borderTopWidth: 1,
     borderTopColor: '#F2F2F7',
     alignItems: 'center',
     justifyContent: 'space-around',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   navItem: {
     alignItems: 'center',

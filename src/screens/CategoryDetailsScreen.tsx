@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,21 +10,36 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import {StorageService} from '../services/StorageService';
-import {Category, Subcategory, Expense} from '../types';
+import { StorageService } from '../services/StorageService';
+import { CurrencyService, CURRENCIES } from '../services/CurrencyService';
+import { Category, Subcategory, Expense, Currency } from '../types';
 
-const CategoryDetailsScreen = ({route, navigation}: any) => {
-  const {categoryId} = route.params;
+const CategoryDetailsScreen = ({ route, navigation }: any) => {
+  const { categoryId } = route.params;
   const [category, setCategory] = useState<Category | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [subcategoryModalVisible, setSubcategoryModalVisible] = useState(false);
   const [newSubcategoryName, setNewSubcategoryName] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year' | 'all'>('month');
+  const [currency, setCurrency] = useState<Currency>('DZD');
 
   useEffect(() => {
     loadData();
+    loadCurrency();
   }, [categoryId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [categoryId])
+  );
+
+  const loadCurrency = async () => {
+    const savedCurrency = await CurrencyService.getSelectedCurrency();
+    setCurrency(savedCurrency);
+  };
 
   const loadData = async () => {
     const categories = await StorageService.getCategories();
@@ -60,15 +75,32 @@ const CategoryDetailsScreen = ({route, navigation}: any) => {
 
   const calculateSubcategoryBreakdown = () => {
     const filteredExpenses = getFilteredExpenses();
-    const breakdown: {[key: string]: {name: string; total: number; color: string}} = {};
+    const breakdown: { [key: string]: { name: string; total: number; color: string } } = {};
 
     // Calculate totals for each subcategory
     filteredExpenses.forEach(expense => {
-      const key = expense.subcategory || 'uncategorized';
+      const subcategoryId = expense.subcategory;
+      const key = subcategoryId || 'uncategorized';
+
       if (!breakdown[key]) {
-        const subcategory = category?.subcategories?.find(s => s.id === expense.subcategory);
+        // Find the subcategory by ID
+        let subcategoryName = 'Direct Expense';
+
+        if (subcategoryId && category?.subcategories) {
+          const subcategory = category.subcategories.find(s => s.id === subcategoryId);
+          if (subcategory) {
+            subcategoryName = subcategory.name;
+          } else {
+            // Subcategory ID exists but not found - use 'Uncategorized' or keep as 'Direct Expense'
+            subcategoryName = 'Uncategorized';
+          }
+        } else if (!subcategoryId) {
+          // No subcategory assigned - this is a direct expense
+          subcategoryName = 'Direct Expense';
+        }
+
         breakdown[key] = {
-          name: subcategory?.name || 'Uncategorized',
+          name: subcategoryName,
           total: 0,
           color: getRandomColor(key),
         };
@@ -93,7 +125,7 @@ const CategoryDetailsScreen = ({route, navigation}: any) => {
 
     if (!category) return;
 
-    await StorageService.addSubcategory(category.id, {name: newSubcategoryName});
+    await StorageService.addSubcategory(category.id, { name: newSubcategoryName });
     setNewSubcategoryName('');
     setSubcategoryModalVisible(false);
     loadData();
@@ -106,7 +138,7 @@ const CategoryDetailsScreen = ({route, navigation}: any) => {
       'Delete Subcategory',
       'Are you sure you want to delete this subcategory?',
       [
-        {text: 'Cancel', style: 'cancel'},
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
@@ -131,12 +163,17 @@ const CategoryDetailsScreen = ({route, navigation}: any) => {
   const subcategoryBreakdown = calculateSubcategoryBreakdown();
   const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
+  const getCurrencySymbol = () => {
+    const curr = CURRENCIES.find(c => c.code === currency);
+    return curr?.symbol || '$';
+  };
+
   return (
     <ScrollView style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, {backgroundColor: category.color || '#667eea'}]}>
+      <View style={[styles.header, { backgroundColor: category.color || '#667eea' }]}>
         <Text style={styles.headerTitle}>{category.name}</Text>
-        <Text style={styles.headerAmount}>${totalAmount.toFixed(2)}</Text>
+        <Text style={styles.headerAmount}>{getCurrencySymbol()}{totalAmount.toFixed(2)}</Text>
         <Text style={styles.headerSubtitle}>Total Spent ({selectedPeriod})</Text>
       </View>
 
@@ -164,9 +201,9 @@ const CategoryDetailsScreen = ({route, navigation}: any) => {
               const percentage = totalAmount > 0 ? (item.total / totalAmount * 100).toFixed(1) : '0';
               return (
                 <View key={index} style={styles.statCard}>
-                  <View style={[styles.statColorBar, {backgroundColor: item.color}]} />
+                  <View style={[styles.statColorBar, { backgroundColor: item.color }]} />
                   <Text style={styles.statName}>{item.name}</Text>
-                  <Text style={styles.statAmount}>${item.total.toFixed(2)}</Text>
+                  <Text style={styles.statAmount}>{getCurrencySymbol()}{item.total.toFixed(2)}</Text>
                   <Text style={styles.statPercentage}>{percentage}%</Text>
                 </View>
               );
@@ -217,7 +254,7 @@ const CategoryDetailsScreen = ({route, navigation}: any) => {
                 </Text>
               )}
             </View>
-            <Text style={styles.expenseAmount}>${expense.amount.toFixed(2)}</Text>
+            <Text style={styles.expenseAmount}>{getCurrencySymbol()}{expense.amount.toFixed(2)}</Text>
           </View>
         ))}
       </View>

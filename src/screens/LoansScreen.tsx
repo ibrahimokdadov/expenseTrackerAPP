@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,11 @@ import {
   Alert,
   Switch,
 } from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
-import {StorageService} from '../services/StorageService';
-import {CurrencyService, CURRENCIES} from '../services/CurrencyService';
-import {Loan, User, Currency} from '../types';
+import { StorageService } from '../services/StorageService';
+import { CurrencyService, CURRENCIES } from '../services/CurrencyService';
+import { Loan, LoanHistoryEntry, User, Currency } from '../types';
 
 const LoansScreen = () => {
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -23,6 +23,9 @@ const LoansScreen = () => {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'given' | 'received' | 'all'>('all');
   const [defaultCurrency, setDefaultCurrency] = useState<Currency>('DZD');
 
@@ -36,18 +39,31 @@ const LoansScreen = () => {
   const [isReceiverMe, setIsReceiverMe] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('DZD');
 
+  // Edit form states
+  const [editAmount, setEditAmount] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+
   const loadData = async () => {
-    const [loadedLoans, loadedUsers, userId, currency] = await Promise.all([
-      StorageService.getLoans(),
-      StorageService.getUsers(),
-      StorageService.getCurrentUser(),
-      CurrencyService.getSelectedCurrency(),
-    ]);
-    setLoans(loadedLoans);
-    setUsers(loadedUsers);
-    setCurrentUserId(userId);
-    setDefaultCurrency(currency);
-    setSelectedCurrency(currency);
+    try {
+      const [loadedLoans, loadedUsers, userId, currency] = await Promise.all([
+        StorageService.getLoans(),
+        StorageService.getUsers(),
+        StorageService.getCurrentUser(),
+        CurrencyService.getSelectedCurrency(),
+      ]);
+
+      console.log(`[LoansScreen] Loaded ${loadedLoans.length} loans:`,
+        loadedLoans.map(l => ({ id: l.id, status: l.status, description: l.description }))
+      );
+
+      setLoans(loadedLoans);
+      setUsers(loadedUsers);
+      setCurrentUserId(userId);
+      setDefaultCurrency(currency);
+      setSelectedCurrency(currency);
+    } catch (error) {
+      console.error('[LoansScreen] Error loading data:', error);
+    }
   };
 
   useFocusEffect(
@@ -95,9 +111,80 @@ const LoansScreen = () => {
     loadData();
   };
 
+  const handleEditLoan = (loan: Loan) => {
+    setSelectedLoan(loan);
+    setEditAmount(loan.amount.toString());
+    setEditDescription(loan.description || '');
+    setEditModalVisible(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedLoan) return;
+
+    if (!editAmount || parseFloat(editAmount) <= 0) {
+      Alert.alert('Error', 'Please enter a valid amount');
+      return;
+    }
+
+    try {
+      const updates: Partial<Loan> = {};
+      if (parseFloat(editAmount) !== selectedLoan.amount) {
+        updates.amount = parseFloat(editAmount);
+      }
+      if (editDescription !== selectedLoan.description) {
+        updates.description = editDescription;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await StorageService.updateLoan(selectedLoan.id, updates);
+
+        // Update local state immediately
+        setLoans(prevLoans =>
+          prevLoans.map(loan =>
+            loan.id === selectedLoan.id
+              ? { ...loan, ...updates }
+              : loan
+          )
+        );
+
+        await loadData();
+      }
+
+      setEditModalVisible(false);
+      setSelectedLoan(null);
+      setEditAmount('');
+      setEditDescription('');
+    } catch (error) {
+      console.error('Error updating loan:', error);
+      Alert.alert('Error', 'Failed to update loan');
+    }
+  };
+
   const handleUpdateLoanStatus = async (loanId: string, status: 'pending' | 'fulfilled') => {
-    await StorageService.updateLoan(loanId, {status});
-    loadData();
+    try {
+      await StorageService.updateLoan(loanId, { status });
+
+      // Update local state immediately for better UX
+      setLoans(prevLoans =>
+        prevLoans.map(loan =>
+          loan.id === loanId
+            ? {
+              ...loan,
+              status,
+              dateFulfilled: status === 'fulfilled' && !loan.dateFulfilled
+                ? new Date().toISOString()
+                : loan.dateFulfilled
+            }
+            : loan
+        )
+      );
+
+      // Also reload data to ensure consistency
+      await loadData();
+    } catch (error) {
+      console.error('Error updating loan status:', error);
+      Alert.alert('Error', 'Failed to update loan status');
+    }
   };
 
   const handleDeleteLoan = (loanId: string) => {
@@ -105,13 +192,26 @@ const LoansScreen = () => {
       'Delete Loan',
       'Are you sure you want to delete this loan?',
       [
-        {text: 'Cancel', style: 'cancel'},
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await StorageService.deleteLoan(loanId);
-            loadData();
+            try {
+              // Update local state immediately for better UX
+              setLoans(prevLoans => prevLoans.filter(loan => loan.id !== loanId));
+
+              // Also delete from storage
+              await StorageService.deleteLoan(loanId);
+
+              // Reload data to ensure consistency
+              await loadData();
+            } catch (error) {
+              console.error('Error deleting loan:', error);
+              // Restore the loan if deletion failed
+              await loadData();
+              Alert.alert('Error', 'Failed to delete loan');
+            }
           },
         },
       ]
@@ -147,55 +247,132 @@ const LoansScreen = () => {
   const totalPending = pendingLoans.reduce((sum, loan) => sum + loan.amount, 0);
   const totalFulfilled = fulfilledLoans.reduce((sum, loan) => sum + loan.amount, 0);
 
-  const LoanItem = ({loan}: {loan: Loan}) => {
+  const LoanItem = ({ loan }: { loan: Loan }) => {
     const isGiven = loan.giver === 'Me';
     const otherParty = isGiven ? loan.receiver : loan.giver;
     const loanDate = new Date(loan.dateCreated);
     const loanCurrency = CurrencyService.getCurrencyByCode(loan.currency || defaultCurrency);
+    const isHistoryExpanded = expandedHistoryId === loan.id;
+    const hasHistory = loan.history && loan.history.length > 0;
+    const sortedHistory = loan.history ? [...loan.history].sort((a, b) =>
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    ) : [];
+
+    const formatHistoryDate = (dateString: string) => {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
 
     return (
       <View style={styles.loanItem}>
-        <View style={styles.loanLeft}>
-          <View style={[styles.loanIcon, {backgroundColor: isGiven ? '#FEE2E2' : '#DCFCE7'}]}>
-            <Text style={styles.loanIconText}>{isGiven ? '↗' : '↙'}</Text>
+        <View style={styles.loanMainContent}>
+          <View style={styles.loanLeft}>
+            <View style={[styles.loanIcon, { backgroundColor: isGiven ? '#FEE2E2' : '#DCFCE7' }]}>
+              <Text style={styles.loanIconText}>{isGiven ? '↗' : '↙'}</Text>
+            </View>
+            <View style={styles.loanDetails}>
+              <Text style={styles.loanParty}>{otherParty}</Text>
+              <Text style={styles.loanDescription}>
+                {loan.description || (isGiven ? 'Money lent' : 'Money borrowed')}
+              </Text>
+              <Text style={styles.loanDate}>
+                {loanDate.toLocaleDateString()}
+                {loan.status === 'fulfilled' && loan.dateFulfilled &&
+                  ` • Paid ${new Date(loan.dateFulfilled).toLocaleDateString()}`}
+              </Text>
+            </View>
           </View>
-          <View style={styles.loanDetails}>
-            <Text style={styles.loanParty}>{otherParty}</Text>
-            <Text style={styles.loanDescription}>
-              {loan.description || (isGiven ? 'Money lent' : 'Money borrowed')}
+          <View style={styles.loanRight}>
+            <Text style={[styles.loanAmount, { color: isGiven ? '#DC2626' : '#16A34A' }]}>
+              {isGiven ? '-' : '+'}{loanCurrency.symbol}{loan.amount.toFixed(0)}
             </Text>
-            <Text style={styles.loanDate}>
-              {loanDate.toLocaleDateString()}
-              {loan.status === 'fulfilled' && loan.dateFulfilled &&
-                ` • Paid ${new Date(loan.dateFulfilled).toLocaleDateString()}`}
-            </Text>
+            <View style={styles.loanActions}>
+              {loan.status === 'pending' && (
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => {
+                    console.log('[LoansScreen] Edit button pressed for loan:', loan.id);
+                    handleEditLoan(loan);
+                  }}>
+                  <Text style={styles.editText}>Edit</Text>
+                </TouchableOpacity>
+              )}
+              {loan.status === 'pending' ? (
+                <TouchableOpacity
+                  style={styles.markPaidButton}
+                  onPress={() => handleUpdateLoanStatus(loan.id, 'fulfilled')}>
+                  <Text style={styles.markPaidText}>Mark Paid</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.undoButton}
+                  onPress={() => handleUpdateLoanStatus(loan.id, 'pending')}>
+                  <Text style={styles.undoText}>Undo</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDeleteLoan(loan.id)}>
+                <Text style={styles.deleteText}>✕</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-        <View style={styles.loanRight}>
-          <Text style={[styles.loanAmount, {color: isGiven ? '#DC2626' : '#16A34A'}]}>
-            {isGiven ? '-' : '+'}{loanCurrency.symbol}{loan.amount.toFixed(0)}
-          </Text>
-          <View style={styles.loanActions}>
-            {loan.status === 'pending' ? (
-              <TouchableOpacity
-                style={styles.markPaidButton}
-                onPress={() => handleUpdateLoanStatus(loan.id, 'fulfilled')}>
-                <Text style={styles.markPaidText}>Mark Paid</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.undoButton}
-                onPress={() => handleUpdateLoanStatus(loan.id, 'pending')}>
-                <Text style={styles.undoText}>Undo</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => handleDeleteLoan(loan.id)}>
-              <Text style={styles.deleteText}>✕</Text>
-            </TouchableOpacity>
+
+        {/* History Toggle Button */}
+        {hasHistory && (
+          <TouchableOpacity
+            style={styles.historyToggle}
+            onPress={() => setExpandedHistoryId(isHistoryExpanded ? null : loan.id)}>
+            <Text style={styles.historyToggleText}>
+              {isHistoryExpanded ? '▼' : '▶'} History ({sortedHistory.length})
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* History Timeline */}
+        {isHistoryExpanded && hasHistory && (
+          <View style={styles.historyContainer}>
+            {sortedHistory.map((entry, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.historyEntry,
+                  index === sortedHistory.length - 1 && styles.historyEntryLast
+                ]}>
+                <View style={styles.historyTimeline}>
+                  <View style={styles.historyDot} />
+                  {index < sortedHistory.length - 1 && <View style={styles.historyLine} />}
+                </View>
+                <View style={styles.historyContent}>
+                  <Text style={styles.historyDate}>{formatHistoryDate(entry.date)}</Text>
+                  {entry.amount !== undefined && entry.previousAmount !== undefined && (
+                    <View style={styles.historyChange}>
+                      <Text style={styles.historyLabel}>Amount:</Text>
+                      <Text style={styles.historyValue}>
+                        {loanCurrency.symbol}{entry.previousAmount.toFixed(0)} → {loanCurrency.symbol}{entry.amount.toFixed(0)}
+                      </Text>
+                    </View>
+                  )}
+                  {entry.description !== undefined && entry.previousDescription !== undefined && (
+                    <View style={styles.historyChange}>
+                      <Text style={styles.historyLabel}>Description:</Text>
+                      <Text style={styles.historyValue}>
+                        "{entry.previousDescription}" → "{entry.description}"
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            ))}
           </View>
-        </View>
+        )}
       </View>
     );
   };
@@ -206,8 +383,8 @@ const LoansScreen = () => {
         <LinearGradient
           colors={['#6B5FFF', '#8A7FFF']}
           style={styles.summaryCard}
-          start={{x: 0, y: 0}}
-          end={{x: 1, y: 1}}>
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>Pending</Text>
@@ -291,8 +468,8 @@ const LoansScreen = () => {
         <LinearGradient
           colors={['#6B5FFF', '#8A7FFF']}
           style={styles.fabGradient}
-          start={{x: 0, y: 0}}
-          end={{x: 1, y: 1}}>
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}>
           <Text style={styles.fabIcon}>+</Text>
         </LinearGradient>
       </TouchableOpacity>
@@ -470,9 +647,77 @@ const LoansScreen = () => {
                 <LinearGradient
                   colors={['#6B5FFF', '#8A7FFF']}
                   style={styles.submitGradient}
-                  start={{x: 0, y: 0}}
-                  end={{x: 1, y: 1}}>
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}>
                   <Text style={styles.submitButtonText}>Add Loan</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Loan Modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setEditModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Loan</Text>
+              <TouchableOpacity onPress={() => {
+                setEditModalVisible(false);
+                setSelectedLoan(null);
+                setEditAmount('');
+                setEditDescription('');
+              }}>
+                <Text style={styles.closeButton}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Amount</Text>
+                <View style={styles.amountInput}>
+                  <Text style={styles.currencySymbol}>
+                    {selectedLoan ? CurrencyService.getCurrencyByCode(selectedLoan.currency || defaultCurrency).symbol : getCurrencySymbol()}
+                  </Text>
+                  <TextInput
+                    style={styles.amountField}
+                    value={editAmount}
+                    onChangeText={setEditAmount}
+                    placeholder="0"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editDescription}
+                  onChangeText={setEditDescription}
+                  placeholder="What is this loan for?"
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={handleSaveEdit}
+                activeOpacity={0.8}>
+                <LinearGradient
+                  colors={['#6B5FFF', '#8A7FFF']}
+                  style={styles.submitGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}>
+                  <Text style={styles.submitButtonText}>Save Changes</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </ScrollView>
@@ -563,6 +808,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    flexDirection: 'column',
+  },
+  loanMainContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -603,6 +851,8 @@ const styles = StyleSheet.create({
   },
   loanRight: {
     alignItems: 'flex-end',
+    minWidth: 140,
+    maxWidth: '50%',
   },
   loanAmount: {
     fontSize: 18,
@@ -611,13 +861,17 @@ const styles = StyleSheet.create({
   },
   loanActions: {
     flexDirection: 'row',
-    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 4,
   },
   markPaidButton: {
     backgroundColor: '#DCFCE7',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+    marginRight: 8,
   },
   markPaidText: {
     fontSize: 12,
@@ -629,6 +883,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+    marginRight: 8,
   },
   undoText: {
     fontSize: 12,
@@ -645,6 +900,93 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#DC2626',
     fontWeight: '600',
+  },
+  editButton: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 8,
+    minWidth: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editText: {
+    fontSize: 13,
+    color: '#2563EB',
+    fontWeight: '600',
+  },
+  historyToggle: {
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    marginTop: 12,
+    width: '100%',
+  },
+  historyToggleText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  historyContainer: {
+    paddingHorizontal: 0,
+    paddingTop: 8,
+    paddingBottom: 8,
+    marginTop: 0,
+    backgroundColor: 'transparent',
+  },
+  historyEntry: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  historyEntryLast: {
+    borderBottomWidth: 0,
+  },
+  historyTimeline: {
+    width: 40,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  historyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#6B5FFF',
+    marginTop: 4,
+  },
+  historyLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#D1D5DB',
+    marginTop: 4,
+    minHeight: 20,
+  },
+  historyContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  historyDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  historyChange: {
+    marginTop: 4,
+  },
+  historyLabel: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  historyValue: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '500',
   },
   emptyState: {
     alignItems: 'center',
