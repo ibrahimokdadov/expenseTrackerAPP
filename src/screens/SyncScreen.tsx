@@ -24,6 +24,7 @@ const SyncScreen = ({navigation}: any) => {
   const [userInfo, setUserInfo] = useState<any>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [sheetUrl, setSheetUrl] = useState<string | null>(null);
+  const [sheetInfo, setSheetInfo] = useState<{ id: string | null; url: string | null; name: string | null } | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -64,6 +65,11 @@ const SyncScreen = ({navigation}: any) => {
       const url = await GoogleSheetsService.getSheetUrl();
       console.log('[SyncScreen] Sheet URL:', url);
       setSheetUrl(url);
+
+      // Get current sheet info
+      const info = await GoogleSheetsService.getCurrentSheetInfo();
+      console.log('[SyncScreen] Current sheet info:', info);
+      setSheetInfo(info);
 
       // Perform automatic sync on login
       console.log('[SyncScreen] Performing automatic sync...');
@@ -346,11 +352,58 @@ const SyncScreen = ({navigation}: any) => {
             {sheetUrl && (
               <View style={styles.sheetLinkContainer}>
                 <Icon name="description" size={20} color="#6B5FFF" />
-                <Text style={styles.sheetLinkText}>
-                  Your data is backed up to Google Sheets
-                </Text>
+                <View style={{flex: 1}}>
+                  <Text style={styles.sheetLinkText}>
+                    Your data is backed up to Google Sheets
+                  </Text>
+                  {sheetInfo?.name && (
+                    <Text style={styles.sheetNameText}>
+                      Sheet: {sheetInfo.name}
+                    </Text>
+                  )}
+                  {sheetInfo?.id && (
+                    <Text style={styles.sheetIdText} numberOfLines={1}>
+                      ID: {sheetInfo.id.substring(0, 20)}...
+                    </Text>
+                  )}
+                </View>
               </View>
             )}
+
+            <TouchableOpacity
+              style={styles.resetSheetButton}
+              onPress={async () => {
+                Alert.alert(
+                  'Reset Sheet Selection',
+                  'This will clear the current sheet selection and search for the most recently modified sheet. Continue?',
+                  [
+                    {text: 'Cancel', style: 'cancel'},
+                    {
+                      text: 'Reset',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await GoogleSheetsService.resetSheetSelection();
+                          const url = await GoogleSheetsService.getSheetUrl();
+                          const info = await GoogleSheetsService.getCurrentSheetInfo();
+                          setSheetUrl(url);
+                          setSheetInfo(info);
+                          Alert.alert(
+                            'Success',
+                            `Sheet selection reset. Now using: ${info?.name || 'Unknown'}`,
+                            [{text: 'OK', onPress: () => performAutoSync()}]
+                          );
+                        } catch (error: any) {
+                          Alert.alert('Error', error.message || 'Failed to reset sheet selection');
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}>
+              <Icon name="refresh" size={18} color="#6B5FFF" />
+              <Text style={styles.resetSheetText}>Reset Sheet Selection</Text>
+            </TouchableOpacity>
 
             {/* Debug Section - Only shown in development */}
             {__DEV__ && (
@@ -674,17 +727,47 @@ const styles = StyleSheet.create({
   sheetLinkContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: '#F0EFFF',
     padding: 12,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   sheetLinkText: {
     fontSize: 13,
     color: '#6B5FFF',
     marginLeft: 8,
     fontWeight: '500',
+  },
+  sheetNameText: {
+    fontSize: 12,
+    color: '#6B5FFF',
+    marginLeft: 8,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  sheetIdText: {
+    fontSize: 10,
+    color: '#9C9CAE',
+    marginLeft: 8,
+    marginTop: 2,
+    fontFamily: 'monospace',
+  },
+  resetSheetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF4E6',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
+  },
+  resetSheetText: {
+    fontSize: 13,
+    color: '#6B5FFF',
+    marginLeft: 8,
+    fontWeight: '600',
   },
   infoCard: {
     flexDirection: 'row',

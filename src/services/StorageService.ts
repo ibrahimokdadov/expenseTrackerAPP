@@ -56,7 +56,12 @@ export class StorageService {
     const isSignedIn = await GoogleAuthService.isSignedIn();
     if (isSignedIn) {
       this.autoBackupEnabled = true;
-      await GoogleSheetsService.initialize();
+      try {
+        await GoogleSheetsService.initialize();
+      } catch (error) {
+        // Don't block app initialization if Google Sheets fails
+        console.warn('[StorageService] Google Sheets initialization failed, continuing without sync:', error);
+      }
     }
   }
 
@@ -105,7 +110,32 @@ export class StorageService {
 
   static async saveAllLoans(loans: Loan[]): Promise<void> {
     try {
-      await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(loans));
+      // Ensure all loans have history arrays initialized before saving
+      // IMPORTANT: Only initialize if missing, never overwrite existing history
+      const normalizedLoans = loans.map(loan => {
+        const normalizedLoan = { ...loan };
+        // Only set to empty array if history is truly missing
+        if (!normalizedLoan.history) {
+          normalizedLoan.history = [];
+        } else if (!Array.isArray(normalizedLoan.history)) {
+          // If it's not an array, log a warning but preserve what we can
+          console.warn(`[StorageService] Loan ${normalizedLoan.id} history is not an array:`, typeof normalizedLoan.history);
+          normalizedLoan.history = [];
+        }
+        // If history exists and is an array, preserve it as-is
+        return normalizedLoan;
+      });
+      
+      // Log history counts before saving
+      const loansWithHistory = normalizedLoans.filter(l => l.history && l.history.length > 0);
+      if (loansWithHistory.length > 0) {
+        console.log(`[StorageService] saveAllLoans: Saving ${loans.length} loans, ${loansWithHistory.length} have history`);
+        loansWithHistory.forEach(loan => {
+          console.log(`[StorageService] Loan ${loan.id} has ${loan.history.length} history entries`);
+        });
+      }
+      
+      await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(normalizedLoans));
     } catch (error) {
       console.error('Failed to save all loans:', error);
       throw error;
@@ -114,7 +144,29 @@ export class StorageService {
 
   static async saveAllCategories(categories: Category[]): Promise<void> {
     try {
-      await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+      // Ensure Personal category has subcategories before saving
+      const normalizedCategories = categories.map(category => {
+        if (category.id === 'personal' && (!category.subcategories || category.subcategories.length === 0)) {
+          category.subcategories = [
+            { id: 'personal_transport', name: 'Transport', categoryId: 'personal' },
+            { id: 'personal_food', name: 'Food', categoryId: 'personal' },
+            { id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal' },
+            { id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal' },
+            { id: 'personal_shopping', name: 'Shopping', categoryId: 'personal' },
+            { id: 'personal_utilities', name: 'Utilities', categoryId: 'personal' },
+            { id: 'personal_education', name: 'Education', categoryId: 'personal' },
+            { id: 'personal_other', name: 'Other', categoryId: 'personal' },
+          ];
+          console.log('[saveAllCategories] Added Personal subcategories to category being saved');
+        }
+        // Ensure all categories have subcategories array initialized
+        if (!category.subcategories) {
+          category.subcategories = [];
+        }
+        return category;
+      });
+      
+      await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(normalizedCategories));
     } catch (error) {
       console.error('Failed to save all categories:', error);
       throw error;
@@ -203,8 +255,41 @@ export class StorageService {
   // Category Management
   static async getCategories(): Promise<Category[]> {
     try {
-      const categories = await AsyncStorage.getItem(CATEGORIES_KEY);
-      return categories ? JSON.parse(categories) : [];
+      const categoriesJson = await AsyncStorage.getItem(CATEGORIES_KEY);
+      if (!categoriesJson) return [];
+      
+      const categories: Category[] = JSON.parse(categoriesJson);
+      
+      // Ensure Personal category always has subcategories (migration for existing categories)
+      let needsUpdate = false;
+      const normalizedCategories = categories.map(category => {
+        if (category.id === 'personal' && (!category.subcategories || category.subcategories.length === 0)) {
+          category.subcategories = [
+            { id: 'personal_transport', name: 'Transport', categoryId: 'personal' },
+            { id: 'personal_food', name: 'Food', categoryId: 'personal' },
+            { id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal' },
+            { id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal' },
+            { id: 'personal_shopping', name: 'Shopping', categoryId: 'personal' },
+            { id: 'personal_utilities', name: 'Utilities', categoryId: 'personal' },
+            { id: 'personal_education', name: 'Education', categoryId: 'personal' },
+            { id: 'personal_other', name: 'Other', categoryId: 'personal' },
+          ];
+          needsUpdate = true;
+        }
+        // Ensure all categories have subcategories array initialized
+        if (!category.subcategories) {
+          category.subcategories = [];
+        }
+        return category;
+      });
+      
+      // Save normalized categories if Personal category was missing subcategories
+      if (needsUpdate) {
+        await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(normalizedCategories));
+        console.log('[StorageService] Migrated Personal category to include subcategories');
+      }
+      
+      return normalizedCategories;
     } catch (error) {
       console.error('Error getting categories:', error);
       return [];
@@ -334,6 +419,7 @@ export class StorageService {
         dateCreated: new Date().toISOString(),
         localId: `loan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         syncStatus: 'pending',
+        history: [], // Initialize history array for new loans
       };
       loans.push(newLoan);
       await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(loans));
@@ -350,8 +436,57 @@ export class StorageService {
 
   static async getLoans(): Promise<Loan[]> {
     try {
-      const loans = await AsyncStorage.getItem(LOANS_KEY);
-      return loans ? JSON.parse(loans) : [];
+      const loansJson = await AsyncStorage.getItem(LOANS_KEY);
+      if (!loansJson) return [];
+      
+      const loans: Loan[] = JSON.parse(loansJson);
+      
+      // Ensure all loans have history arrays initialized and valid dates (migration for existing loans)
+      let needsUpdate = false;
+      const normalizedLoans = loans.map(loan => {
+        const normalizedLoan = { ...loan };
+        
+        // Ensure history array exists
+        if (!normalizedLoan.history) {
+          normalizedLoan.history = [];
+          needsUpdate = true;
+        }
+        
+        // Fix invalid dateCreated
+        if (!normalizedLoan.dateCreated || isNaN(new Date(normalizedLoan.dateCreated).getTime())) {
+          console.warn(`[StorageService] Loan ${normalizedLoan.id} has invalid dateCreated, fixing...`);
+          normalizedLoan.dateCreated = new Date().toISOString();
+          needsUpdate = true;
+        }
+        
+        // Fix invalid dateFulfilled
+        if (normalizedLoan.dateFulfilled && isNaN(new Date(normalizedLoan.dateFulfilled).getTime())) {
+          console.warn(`[StorageService] Loan ${normalizedLoan.id} has invalid dateFulfilled, fixing...`);
+          normalizedLoan.dateFulfilled = new Date().toISOString();
+          needsUpdate = true;
+        }
+        
+        // Fix invalid dates in history entries
+        if (normalizedLoan.history) {
+          normalizedLoan.history = normalizedLoan.history.map(entry => {
+            if (!entry.date || isNaN(new Date(entry.date).getTime())) {
+              console.warn(`[StorageService] Loan ${normalizedLoan.id} has invalid history date, fixing...`);
+              return { ...entry, date: new Date().toISOString() };
+            }
+            return entry;
+          });
+        }
+        
+        return normalizedLoan;
+      });
+      
+      // Save normalized loans if any were fixed
+      if (needsUpdate) {
+        await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(normalizedLoans));
+        console.log('[StorageService] Migrated loans to fix invalid data');
+      }
+      
+      return normalizedLoans;
     } catch (error) {
       console.error('Error getting loans:', error);
       return [];
@@ -388,10 +523,28 @@ export class StorageService {
         // Add history entry if there are changes to track
         if (historyEntry) {
           currentLoan.history.push(historyEntry);
+          console.log(`[StorageService] Added history entry to loan ${id}:`, historyEntry);
         }
 
-        // Apply updates
-        loans[index] = { ...currentLoan, ...updates };
+        // Handle history preservation - if updates contains history, use it (could be from sync/fix)
+        // Otherwise preserve existing history
+        let finalHistory: LoanHistoryEntry[];
+        if (updates.history !== undefined) {
+          // Updates explicitly provide history - use it (but ensure it's an array)
+          finalHistory = Array.isArray(updates.history) ? [...updates.history] : (currentLoan.history || []);
+        } else {
+          // No history in updates - preserve existing history
+          finalHistory = [...(currentLoan.history || [])];
+        }
+
+        // Apply updates - explicitly preserve history array
+        loans[index] = { 
+          ...currentLoan, 
+          ...updates,
+          history: finalHistory // Ensure history is preserved with correct array
+        };
+        
+        console.log(`[StorageService] Updated loan ${id}, history entries: ${finalHistory.length}`);
 
         if (updates.status === 'fulfilled' && !loans[index].dateFulfilled) {
           loans[index].dateFulfilled = new Date().toISOString();
@@ -401,9 +554,9 @@ export class StorageService {
         loans[index].syncStatus = 'pending';
 
         await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(loans));
-        console.log(`[StorageService] Updated loan ${id} with status: ${updates.status}`);
+        console.log(`[StorageService] Updated loan ${id} with status: ${updates.status || currentLoan.status}, history entries: ${loans[index].history?.length || 0}`);
         if (historyEntry) {
-          console.log(`[StorageService] Added history entry for loan ${id}`);
+          console.log(`[StorageService] History entry details:`, JSON.stringify(historyEntry));
         }
 
         // Trigger backup to sync changes to sheets
@@ -724,12 +877,12 @@ export class StorageService {
       const data = await GoogleSheetsService.restoreFromBackup();
       if (!data) return false;
 
-      // Save restored data
+      // Save restored data - use saveAllLoans to ensure proper normalization including history arrays
       await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(data.expenses));
-      await AsyncStorage.setItem(LOANS_KEY, JSON.stringify(data.loans));
+      await this.saveAllLoans(data.loans); // Use saveAllLoans to ensure history arrays are properly initialized
       await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(data.categories));
 
-      console.log('Data restored successfully from backup');
+      console.log(`[StorageService] Data restored successfully: ${data.expenses.length} expenses, ${data.loans.length} loans (${data.loans.filter(l => l.history && l.history.length > 0).length} with history), ${data.categories.length} categories`);
       return true;
     } catch (error) {
       console.error('Failed to restore from backup:', error);

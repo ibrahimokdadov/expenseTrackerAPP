@@ -77,8 +77,9 @@ export class GoogleSheetsService {
       console.log('[GoogleSheetsService] 🔍 Searching for existing ExpenseTracker sheets...');
       const existingSheet = await this.findExistingSheet();
       if (existingSheet) {
-        console.log('[GoogleSheetsService] ✅ Found existing sheet:', existingSheet.spreadsheetId);
-        console.log('[GoogleSheetsService] Sheet URL:', existingSheet.spreadsheetUrl);
+        console.log('[GoogleSheetsService] ✅ Found existing sheet:');
+        console.log('[GoogleSheetsService]   Sheet ID:', existingSheet.spreadsheetId);
+        console.log('[GoogleSheetsService]   Sheet URL:', existingSheet.spreadsheetUrl);
         this.sheetInfo = existingSheet;
         await AsyncStorage.setItem('@expense_tracker_sheet', JSON.stringify(this.sheetInfo));
 
@@ -87,6 +88,14 @@ export class GoogleSheetsService {
         console.log('[GoogleSheetsService] 🔒 Using existing sheet - will preserve existing data on first sync');
         // Ensure ZT sheets exist in the existing spreadsheet
         await this.ensureZTSheetsExist();
+        
+        // Log final sheet selection for debugging
+        const user = await GoogleAuthService.getCurrentUser();
+        console.log('[GoogleSheetsService] 📊 Sheet Selection Summary:');
+        console.log('[GoogleSheetsService]   User:', user?.email || 'Unknown');
+        console.log('[GoogleSheetsService]   Selected Sheet ID:', this.sheetInfo.spreadsheetId);
+        console.log('[GoogleSheetsService]   Selected Sheet URL:', this.sheetInfo.spreadsheetUrl);
+        
         return true;
       }
 
@@ -96,7 +105,9 @@ export class GoogleSheetsService {
       await this.createBackupSheet();
       return true;
     } catch (error) {
-      console.error('[GoogleSheetsService] Failed to initialize:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[GoogleSheetsService] Failed to initialize:', errorMessage, error);
+      // Don't crash the app if Google Sheets initialization fails - just log and continue
       return false;
     }
   }
@@ -698,10 +709,11 @@ export class GoogleSheetsService {
         cat.name,
         cat.budget?.toString() || '0',
         cat.color || '',
+        JSON.stringify(cat.subcategories || []), // Add subcategories as JSON
       ]);
 
       await fetch(
-        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Categories!A2:D:clear`,
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Categories!A2:E:clear`,
         {
           method: 'POST',
           headers: {
@@ -1207,9 +1219,14 @@ export class GoogleSheetsService {
       }
 
       if (!localLoan) {
-        // New loan from remote
-        mergedLoans.push(remoteLoan);
+        // New loan from remote - ensure history array is initialized
+        const newLoan = {
+          ...remoteLoan,
+          history: remoteLoan.history || [], // Ensure history is always an array
+        };
+        mergedLoans.push(newLoan);
         result.downloaded++;
+        console.log(`[mergeLoans] Added new loan ${newLoan.id} with ${newLoan.history.length} history entries`);
       } else {
         // Loan exists locally - merge history and prefer local changes
         const mergedLoan = { ...localLoan };
@@ -1252,6 +1269,9 @@ export class GoogleSheetsService {
           );
 
           console.log(`[mergeLoans] Merged history for loan ${localLoan.id}: ${localHistory.length} local + ${remoteHistory.length} remote = ${mergedLoan.history.length} merged`);
+        } else {
+          // No history to merge, but ensure history array exists
+          mergedLoan.history = mergedLoan.history || [];
         }
 
         // Prefer local changes for status (user just marked as paid)
@@ -1272,9 +1292,13 @@ export class GoogleSheetsService {
       }
     }
 
-    // Add remaining local loans
+    // Add remaining local loans - ensure they have history arrays
     for (const localLoan of localMap.values()) {
-      mergedLoans.push(localLoan);
+      const loanWithHistory = {
+        ...localLoan,
+        history: localLoan.history || [], // Ensure history array exists
+      };
+      mergedLoans.push(loanWithHistory);
       result.uploaded++;
     }
 
@@ -1296,6 +1320,16 @@ export class GoogleSheetsService {
 
     // Add all remote categories
     for (const remoteCategory of remoteCategories) {
+      // Special handling for Personal category - preserve subcategories if remote doesn't have them
+      if (remoteCategory.id === 'personal') {
+        const localPersonal = localMap.get('personal');
+        if (localPersonal && localPersonal.subcategories && localPersonal.subcategories.length > 0 &&
+            (!remoteCategory.subcategories || remoteCategory.subcategories.length === 0)) {
+          console.log('[mergeCategories] Preserving local Personal subcategories');
+          remoteCategory.subcategories = localPersonal.subcategories;
+        }
+      }
+
       mergedCategories.push(remoteCategory);
       if (!localMap.has(remoteCategory.id)) {
         result.downloaded++;
@@ -1311,7 +1345,18 @@ export class GoogleSheetsService {
 
     // Save merged data
     await StorageService.saveAllCategories(mergedCategories);
-    await this.syncCategories(mergedCategories);
+
+    // Ensure Personal category has subcategories after merge
+    const personalCat = mergedCategories.find(c => c.id === 'personal');
+    if (personalCat && (!personalCat.subcategories || personalCat.subcategories.length === 0)) {
+      console.log('[mergeCategories] Restoring Personal subcategories after sync');
+      await StorageService.restorePersonalSubcategories();
+      // Re-read categories to get the updated Personal category
+      const updatedCategories = await StorageService.getCategories();
+      await this.syncCategories(updatedCategories);
+    } else {
+      await this.syncCategories(mergedCategories);
+    }
 
     return result;
   }
@@ -1401,7 +1446,7 @@ export class GoogleSheetsService {
         fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Loans!A2:G`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
-        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Categories!A2:D`, {
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Categories!A2:E`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
         fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/ZT_Balances!A2:E`, {
@@ -1470,7 +1515,235 @@ export class GoogleSheetsService {
           const loanId = row[0];
           if (!loanId) continue;
 
-          const date = row[1] || new Date().toISOString();
+          // Parse date - handle both date-only and full ISO formats
+          const rawDate = row[1] || '';
+          let date: string;
+          if (rawDate) {
+            try {
+              // If it's just a date (YYYY-MM-DD), add time component
+              if (rawDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                date = new Date(rawDate + 'T00:00:00.000Z').toISOString();
+              } else if (rawDate.includes('T')) {
+                date = rawDate; // Already in ISO format
+              } else {
+                // Try parsing as-is
+                date = new Date(rawDate).toISOString();
+              }
+            } catch (error) {
+              console.warn('[fetchRemoteData] Invalid history date:', rawDate, error);
+              date = new Date().toISOString();
+            }
+          } else {
+            date = new Date().toISOString();
+          }
+          const field = row[2] || '';
+          const oldValue = row[3] || '';
+          const newValue = row[4] || '';
+
+          const key = dateKey(loanId, date);
+          let entry = entriesByLoanAndDate.get(key);
+
+          if (!entry) {
+            entry = { date };
+            entriesByLoanAndDate.set(key, entry);
+          }
+
+          // Add field change to entry (same entry can have both amount and description)
+          if (field === 'amount') {
+            entry.amount = parseFloat(newValue);
+            entry.previousAmount = parseFloat(oldValue);
+          } else if (field === 'description') {
+            entry.description = newValue;
+            entry.previousDescription = oldValue;
+          }
+        }
+
+        // Second pass: group by loanId
+        for (const [key, entry] of entriesByLoanAndDate.entries()) {
+          const [loanId] = key.split('|');
+          if (!historyByLoanId.has(loanId)) {
+            historyByLoanId.set(loanId, []);
+          }
+          historyByLoanId.get(loanId)!.push(entry);
+        }
+
+        // Sort each loan's history chronologically
+        for (const [loanId, entries] of historyByLoanId.entries()) {
+          // Log history loading for debugging
+          console.log(`[fetchRemoteData] Loan ${loanId} has ${entries.length} history entries from remote`);
+          entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        }
+
+        console.log(`[fetchRemoteData] Loaded history for ${historyByLoanId.size} loans (${loanHistoryData.values.length} history rows)`);
+      }
+
+      // Parse loans - map sheet columns to Loan type
+      const loans: Loan[] = (loansData.values || []).map((row: any[]) => {
+        // Parse the person string (e.g., "Me to John" or "John to Me")
+        const personStr = row[1] || '';
+        const [giver, receiver] = personStr.includes(' to ')
+          ? personStr.split(' to ').map(s => s.trim())
+          : ['', 'Me'];
+
+        // Parse date if available - handle both date-only and full ISO formats
+        const dateStr = row[4] || '';
+        let dateCreated: string;
+        if (dateStr) {
+          try {
+            // If it's just a date (YYYY-MM-DD), add time component
+            if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              dateCreated = new Date(dateStr + 'T00:00:00.000Z').toISOString();
+            } else {
+              dateCreated = new Date(dateStr).toISOString();
+            }
+          } catch (error) {
+            console.warn('[fetchRemoteData] Invalid loan date:', dateStr, error);
+            dateCreated = new Date().toISOString();
+          }
+        } else {
+          dateCreated = new Date().toISOString();
+        }
+
+        // Map status
+        const status = row[5] === 'fulfilled' ? 'fulfilled' : 'pending';
+
+        const loanId = row[0];
+        const history = historyByLoanId.get(loanId) || [];
+
+        return {
+          id: loanId,
+          giver: giver || 'Unknown',
+          receiver: receiver || 'Unknown',
+          amount: parseFloat(row[2] || '0'),
+          description: row[6] || '', // notes column becomes description
+          status: status,
+          dateCreated: dateCreated,
+          dateFulfilled: status === 'fulfilled' ? dateCreated : undefined,
+          localId: `loan_${loanId}`,
+          syncStatus: 'synced' as const,
+          history: history.length > 0 ? history : [], // Always initialize as array, never undefined
+        };
+      });
+
+      // Parse categories
+      const categories: Category[] = (categoriesData.values || []).map((row: any[]) => {
+        let subcategories: Subcategory[] = [];
+
+        // Parse subcategories from column E (index 4) if it exists
+        if (row[4]) {
+          try {
+            const parsed = JSON.parse(row[4]);
+            if (Array.isArray(parsed)) {
+              subcategories = parsed;
+            }
+          } catch (error) {
+            console.warn('[GoogleSheetsService] Error parsing subcategories:', error);
+          }
+        }
+
+        return {
+          id: row[0],
+          name: row[1],
+          budget: parseFloat(row[2] || '0'),
+          color: row[3],
+          subcategories: subcategories.length > 0 ? subcategories : undefined,
+        };
+      });
+
+      // Parse ZT Balances
+      const ztBalances: ZTBalance[] = (ztBalancesData.values || []).map((row: any[]) => ({
+        id: row[0],
+        owner: row[1],
+        value: parseFloat(row[2] || '0'),
+        year: parseInt(row[3] || '0'),
+        dateAdded: row[4],
+      }));
+
+      // Parse ZT Payments
+      const ztPayments: ZTPayment[] = (ztPaymentsData.values || []).map((row: any[]) => ({
+        id: row[0],
+        amount: parseFloat(row[1] || '0'),
+        purpose: row[2],
+        date: row[3],
+      }));
+
+      return { expenses, loans, categories, ztBalances, ztPayments };
+    } catch (error) {
+      console.error('Failed to fetch remote data:', error);
+      return null;
+    }
+  }
+
+  static async restoreFromBackup(): Promise<{ expenses: Expense[], loans: Loan[], categories: Category[] } | null> {
+    try {
+      if (!this.sheetInfo) {
+        await this.initialize();
+        if (!this.sheetInfo) throw new Error('No sheet configured');
+      }
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) throw new Error('No access token');
+
+      // Fetch all data including LoanHistory
+      const [expensesRes, loansRes, categoriesRes, loanHistoryRes] = await Promise.all([
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:I`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Loans!A2:G`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Categories!A2:E`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }),
+        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/LoanHistory!A2:E`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }).catch(() => {
+          // LoanHistory sheet might not exist in older backups
+          console.log('[restoreFromBackup] LoanHistory sheet not found, continuing without it');
+          return { ok: false, json: async () => ({ values: [] }) };
+        }),
+      ]);
+
+      const [expensesData, loansData, categoriesData, loanHistoryData] = await Promise.all([
+        expensesRes.json(),
+        loansRes.json(),
+        categoriesRes.json(),
+        loanHistoryRes.ok ? loanHistoryRes.json() : Promise.resolve({ values: [] }),
+      ]);
+
+      // Parse loan history - group by LoanID and merge entries with same date
+      const historyByLoanId = new Map<string, LoanHistoryEntry[]>();
+
+      if (loanHistoryData.values && loanHistoryData.values.length > 0) {
+        // First pass: group by loanId and date
+        const entriesByLoanAndDate = new Map<string, LoanHistoryEntry>();
+        const dateKey = (loanId: string, date: string) => `${loanId}|${date}`;
+
+        for (const row of loanHistoryData.values) {
+          const loanId = row[0];
+          if (!loanId) continue;
+
+          // Parse date - handle both date-only and full ISO formats
+          const rawDate = row[1] || '';
+          let date: string;
+          if (rawDate) {
+            try {
+              // If it's just a date (YYYY-MM-DD), add time component
+              if (rawDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                date = new Date(rawDate + 'T00:00:00.000Z').toISOString();
+              } else if (rawDate.includes('T')) {
+                date = rawDate; // Already in ISO format
+              } else {
+                // Try parsing as-is
+                date = new Date(rawDate).toISOString();
+              }
+            } catch (error) {
+              console.warn('[restoreFromBackup] Invalid history date:', rawDate, error);
+              date = new Date().toISOString();
+            }
+          } else {
+            date = new Date().toISOString();
+          }
           const field = row[2] || '';
           const oldValue = row[3] || '';
           const newValue = row[4] || '';
@@ -1507,10 +1780,25 @@ export class GoogleSheetsService {
           entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         }
 
-        console.log(`[fetchRemoteData] Loaded history for ${historyByLoanId.size} loans (${loanHistoryData.values.length} history rows)`);
+        console.log(`[restoreFromBackup] Loaded history for ${historyByLoanId.size} loans (${loanHistoryData.values.length} history rows)`);
       }
 
-      // Parse loans - map sheet columns to Loan type
+      // Parse expenses
+      const expenses: Expense[] = (expensesData.values || []).map((row: any[]) => ({
+        id: row[0],
+        date: row[1],
+        amount: parseFloat(row[2]),
+        category: row[3],
+        subcategory: row[4] || undefined,
+        description: row[5],
+        currency: row[6],
+        timestamp: row[7],
+        localId: row[0],
+        type: 'expense',
+        purpose: row[5],
+      }));
+
+      // Parse loans - map sheet columns to Loan type (same structure as fetchRemoteData)
       const loans: Loan[] = (loansData.values || []).map((row: any[]) => {
         // Parse the person string (e.g., "Me to John" or "John to Me")
         const personStr = row[1] || '';
@@ -1518,9 +1806,24 @@ export class GoogleSheetsService {
           ? personStr.split(' to ').map(s => s.trim())
           : ['', 'Me'];
 
-        // Parse date if available
+        // Parse date if available - handle both date-only and full ISO formats
         const dateStr = row[4] || '';
-        const dateCreated = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
+        let dateCreated: string;
+        if (dateStr) {
+          try {
+            // If it's just a date (YYYY-MM-DD), add time component
+            if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              dateCreated = new Date(dateStr + 'T00:00:00.000Z').toISOString();
+            } else {
+              dateCreated = new Date(dateStr).toISOString();
+            }
+          } catch (error) {
+            console.warn('[restoreFromBackup] Invalid loan date:', dateStr, error);
+            dateCreated = new Date().toISOString();
+          }
+        } else {
+          dateCreated = new Date().toISOString();
+        }
 
         // Map status
         const status = row[5] === 'fulfilled' ? 'fulfilled' : 'pending';
@@ -1539,96 +1842,10 @@ export class GoogleSheetsService {
           dateFulfilled: status === 'fulfilled' ? dateCreated : undefined,
           localId: `loan_${loanId}`,
           syncStatus: 'synced' as const,
-          history: history.length > 0 ? history : undefined,
+          history: history.length > 0 ? history : [], // Always initialize as array, never undefined
+          currency: 'DZD' as const, // Default currency
         };
       });
-
-      // Parse categories
-      const categories: Category[] = (categoriesData.values || []).map((row: any[]) => ({
-        id: row[0],
-        name: row[1],
-        budget: parseFloat(row[2] || '0'),
-        color: row[3],
-      }));
-
-      // Parse ZT Balances
-      const ztBalances: ZTBalance[] = (ztBalancesData.values || []).map((row: any[]) => ({
-        id: row[0],
-        owner: row[1],
-        value: parseFloat(row[2] || '0'),
-        year: parseInt(row[3] || '0'),
-        dateAdded: row[4],
-      }));
-
-      // Parse ZT Payments
-      const ztPayments: ZTPayment[] = (ztPaymentsData.values || []).map((row: any[]) => ({
-        id: row[0],
-        amount: parseFloat(row[1] || '0'),
-        purpose: row[2],
-        date: row[3],
-      }));
-
-      return { expenses, loans, categories, ztBalances, ztPayments };
-    } catch (error) {
-      console.error('Failed to fetch remote data:', error);
-      return null;
-    }
-  }
-
-  static async restoreFromBackup(): Promise<{ expenses: Expense[], loans: Loan[], categories: Category[] } | null> {
-    try {
-      if (!this.sheetInfo) {
-        await this.initialize();
-        if (!this.sheetInfo) throw new Error('No sheet configured');
-      }
-
-      const accessToken = await GoogleAuthService.getAccessToken();
-      if (!accessToken) throw new Error('No access token');
-
-      // Fetch all data
-      const [expensesRes, loansRes, categoriesRes] = await Promise.all([
-        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Expenses!A2:I`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Loans!A2:G`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-        fetch(`${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Categories!A2:D`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-      ]);
-
-      const [expensesData, loansData, categoriesData] = await Promise.all([
-        expensesRes.json(),
-        loansRes.json(),
-        categoriesRes.json(),
-      ]);
-
-      // Parse expenses
-      const expenses: Expense[] = (expensesData.values || []).map((row: any[]) => ({
-        id: row[0],
-        date: row[1],
-        amount: parseFloat(row[2]),
-        category: row[3],
-        subcategory: row[4] || undefined,
-        description: row[5],
-        currency: row[6],
-        timestamp: row[7],
-        localId: row[0],
-        type: 'expense',
-        purpose: row[5],
-      }));
-
-      // Parse loans
-      const loans: Loan[] = (loansData.values || []).map((row: any[]) => ({
-        id: row[0],
-        person: row[1],
-        amount: parseFloat(row[2]),
-        type: row[3] as 'given' | 'taken',
-        date: row[4],
-        status: row[5] as 'pending' | 'paid',
-        notes: row[6],
-      }));
 
       // Parse categories
       const categories: Category[] = (categoriesData.values || []).map((row: any[]) => ({
@@ -1638,6 +1855,7 @@ export class GoogleSheetsService {
         color: row[3],
       }));
 
+      console.log(`[restoreFromBackup] Restored ${expenses.length} expenses, ${loans.length} loans (${loans.filter(l => l.history && l.history.length > 0).length} with history), ${categories.length} categories`);
       return { expenses, loans, categories };
     } catch (error) {
       console.error('Failed to restore from backup:', error);
@@ -1653,6 +1871,55 @@ export class GoogleSheetsService {
       this.sheetInfo = null;
     } catch (error) {
       console.error('Failed to delete sheet info:', error);
+    }
+  }
+
+  // Method to reset sheet selection - useful for debugging or switching sheets
+  static async resetSheetSelection(): Promise<void> {
+    try {
+      console.log('[GoogleSheetsService] Resetting sheet selection...');
+      await AsyncStorage.removeItem('@expense_tracker_sheet');
+      this.sheetInfo = null;
+      // Reinitialize to find and select a sheet
+      await this.initialize();
+      console.log('[GoogleSheetsService] Sheet selection reset. New sheet ID:', this.sheetInfo?.spreadsheetId);
+    } catch (error) {
+      console.error('[GoogleSheetsService] Failed to reset sheet selection:', error);
+      throw error;
+    }
+  }
+
+  // Method to get current sheet info for debugging
+  static async getCurrentSheetInfo(): Promise<{ id: string | null; url: string | null; name: string | null } | null> {
+    try {
+      if (this.sheetInfo) {
+        // Get sheet name if available
+        const accessToken = await GoogleAuthService.getAccessToken();
+        let sheetName: string | null = null;
+        if (accessToken) {
+          try {
+            const response = await fetch(
+              `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}?fields=properties(title)`,
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            if (response.ok) {
+              const data = await response.json();
+              sheetName = data.properties?.title || null;
+            }
+          } catch (error) {
+            console.warn('[GoogleSheetsService] Could not fetch sheet name:', error);
+          }
+        }
+        return {
+          id: this.sheetInfo.spreadsheetId,
+          url: this.sheetInfo.spreadsheetUrl,
+          name: sheetName,
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('[GoogleSheetsService] Failed to get current sheet info:', error);
+      return null;
     }
   }
 
@@ -2107,8 +2374,23 @@ export class GoogleSheetsService {
           file.name.includes(user.email.split('@')[0])
         );
 
-        const sheetToUse = userSpecificSheet || data.files[0];
-        console.log('[findExistingSheet] Using sheet:', sheetToUse.name);
+        // If multiple sheets exist, prefer the most recently modified one
+        // This ensures consistent selection across devices
+        let sheetToUse: any;
+        if (userSpecificSheet) {
+          sheetToUse = userSpecificSheet;
+          console.log('[findExistingSheet] Using user-specific sheet:', sheetToUse.name);
+        } else {
+          // Sort by modified time (most recent first) and use the first one
+          const sortedSheets = [...data.files].sort((a, b) => {
+            const timeA = new Date(a.modifiedTime || a.createdTime || 0).getTime();
+            const timeB = new Date(b.modifiedTime || b.createdTime || 0).getTime();
+            return timeB - timeA; // Descending order (newest first)
+          });
+          sheetToUse = sortedSheets[0];
+          console.log('[findExistingSheet] Multiple sheets found, using most recently modified:', sheetToUse.name);
+          console.log('[findExistingSheet] Sheet modified at:', sheetToUse.modifiedTime || sheetToUse.createdTime);
+        }
 
         // Verify the sheet structure before using it
         const verifyResponse = await fetch(

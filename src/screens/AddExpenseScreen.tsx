@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
 import {StorageService} from '../services/StorageService';
 import {CurrencyService, CURRENCIES} from '../services/CurrencyService';
@@ -36,9 +37,7 @@ const AddExpenseScreen = ({navigation}: any) => {
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
-    loadCategories();
     loadCurrency();
-
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -53,6 +52,57 @@ const AddExpenseScreen = ({navigation}: any) => {
     ]).start();
   }, []);
 
+  // Reload categories every time screen is focused to ensure migrations run
+  useFocusEffect(
+    useCallback(() => {
+      loadCategories();
+    }, [])
+  );
+
+  // Ensure Personal category always has subcategories when selected
+  useEffect(() => {
+    if (selectedCategory === 'personal') {
+      const checkAndFixPersonal = async () => {
+        const personalCat = categories.find(c => c.id === 'personal');
+        if (personalCat && (!personalCat.subcategories || personalCat.subcategories.length === 0)) {
+          console.log('[AddExpenseScreen] Personal category missing subcategories, fixing...');
+          const defaultSubcategories = [
+            { id: 'personal_transport', name: 'Transport', categoryId: 'personal' },
+            { id: 'personal_food', name: 'Food', categoryId: 'personal' },
+            { id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal' },
+            { id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal' },
+            { id: 'personal_shopping', name: 'Shopping', categoryId: 'personal' },
+            { id: 'personal_utilities', name: 'Utilities', categoryId: 'personal' },
+            { id: 'personal_education', name: 'Education', categoryId: 'personal' },
+            { id: 'personal_other', name: 'Other', categoryId: 'personal' },
+          ];
+          
+          // Update state
+          setCategories(prevCats => 
+            prevCats.map(c => 
+              c.id === 'personal' ? { ...c, subcategories: defaultSubcategories } : c
+            )
+          );
+          
+          // Save to storage
+          const cats = await StorageService.getCategories();
+          const personalIndex = cats.findIndex(c => c.id === 'personal');
+          if (personalIndex !== -1) {
+            cats[personalIndex].subcategories = defaultSubcategories;
+            await StorageService.saveCategories(cats);
+            console.log('[AddExpenseScreen] Saved Personal subcategories to storage');
+            // Reload to ensure state is updated
+            await loadCategories();
+          }
+        } else if (!personalCat) {
+          // Personal category doesn't exist yet, reload categories
+          await loadCategories();
+        }
+      };
+      checkAndFixPersonal();
+    }
+  }, [selectedCategory]);
+
   const loadCurrency = async () => {
     const savedCurrency = await CurrencyService.getSelectedCurrency();
     setCurrency(savedCurrency);
@@ -61,9 +111,22 @@ const AddExpenseScreen = ({navigation}: any) => {
   const loadCategories = async () => {
     const cats = await StorageService.getCategories();
     console.log('[AddExpenseScreen] Loaded categories:', cats.map(c => ({
+      id: c.id,
       name: c.name,
-      subcategories: c.subcategories?.length || 0
+      subcategories: c.subcategories?.length || 0,
+      subcategoryNames: c.subcategories?.map(s => s.name) || []
     })));
+    
+    // Special logging for Personal category
+    const personalCat = cats.find(c => c.id === 'personal');
+    if (personalCat) {
+      console.log('[AddExpenseScreen] Personal category found:', {
+        name: personalCat.name,
+        subcategoriesCount: personalCat.subcategories?.length || 0,
+        subcategories: personalCat.subcategories?.map(s => s.name) || []
+      });
+    }
+    
     setCategories(cats);
     if (cats.length > 0 && !selectedCategory) {
       setSelectedCategory(cats[0].id);
@@ -110,6 +173,44 @@ const AddExpenseScreen = ({navigation}: any) => {
     const cat = categories.find(c => c.id === selectedCategory);
     if (cat) {
       console.log(`[AddExpenseScreen] Current category: ${cat.name}, subcategories: ${cat.subcategories?.length || 0}`);
+      
+      // If Personal category and missing subcategories, fix immediately
+      if (cat.id === 'personal' && (!cat.subcategories || cat.subcategories.length === 0)) {
+        console.warn('[AddExpenseScreen] Personal category missing subcategories, fixing now...');
+        const defaultSubcategories = [
+          { id: 'personal_transport', name: 'Transport', categoryId: 'personal' },
+          { id: 'personal_food', name: 'Food', categoryId: 'personal' },
+          { id: 'personal_entertainment', name: 'Entertainment', categoryId: 'personal' },
+          { id: 'personal_healthcare', name: 'Healthcare', categoryId: 'personal' },
+          { id: 'personal_shopping', name: 'Shopping', categoryId: 'personal' },
+          { id: 'personal_utilities', name: 'Utilities', categoryId: 'personal' },
+          { id: 'personal_education', name: 'Education', categoryId: 'personal' },
+          { id: 'personal_other', name: 'Other', categoryId: 'personal' },
+        ];
+        // Update in state immediately
+        setCategories(prevCats => 
+          prevCats.map(c => 
+            c.id === 'personal' ? { ...c, subcategories: defaultSubcategories } : c
+          )
+        );
+        // Also save to storage
+        StorageService.getCategories().then(cats => {
+          const personalIndex = cats.findIndex(c => c.id === 'personal');
+          if (personalIndex !== -1) {
+            cats[personalIndex].subcategories = defaultSubcategories;
+            StorageService.saveCategories(cats);
+            console.log('[AddExpenseScreen] Saved Personal subcategories to storage');
+          }
+        });
+        // Return updated category with subcategories
+        return { ...cat, subcategories: defaultSubcategories };
+      }
+      
+      if (cat.subcategories && cat.subcategories.length > 0) {
+        console.log(`[AddExpenseScreen] Subcategory names:`, cat.subcategories.map(s => s.name));
+      }
+    } else {
+      console.log(`[AddExpenseScreen] Category not found for id: ${selectedCategory}`);
     }
     return cat;
   };
@@ -192,9 +293,18 @@ const AddExpenseScreen = ({navigation}: any) => {
                     styles.categoryOption,
                     selectedCategory === cat.id && styles.selectedCategoryOption,
                   ]}
-                  onPress={() => {
+                  onPress={async () => {
                     setSelectedCategory(cat.id);
                     setShowCategoryModal(false);
+                    // Force reload categories when Personal is selected to ensure subcategories are loaded
+                    if (cat.id === 'personal') {
+                      console.log('[AddExpenseScreen] Personal selected, reloading categories...');
+                      await loadCategories();
+                      // Reload again after a short delay to ensure state is updated
+                      setTimeout(() => {
+                        loadCategories();
+                      }, 100);
+                    }
                   }}
                   activeOpacity={0.7}>
                   <Animated.View

@@ -51,12 +51,91 @@ const LoansScreen = () => {
         StorageService.getCurrentUser(),
         CurrencyService.getSelectedCurrency(),
       ]);
+      
+      // Ensure all loans have valid dates and history arrays
+      const fixedLoans = loadedLoans.map(loan => {
+        const fixedLoan = { ...loan };
+        let needsFix = false;
+        
+        // Fix history array - only initialize if truly missing, preserve existing history
+        if (!fixedLoan.history) {
+          fixedLoan.history = [];
+          needsFix = true;
+        } else if (!Array.isArray(fixedLoan.history)) {
+          // If it's not an array, try to preserve it by converting or use empty
+          console.warn(`[LoansScreen] Loan ${fixedLoan.id} history is not an array:`, typeof fixedLoan.history, fixedLoan.history);
+          fixedLoan.history = [];
+          needsFix = true;
+        }
+        
+        // Fix dateCreated - only if invalid, don't overwrite valid dates
+        if (!fixedLoan.dateCreated || isNaN(new Date(fixedLoan.dateCreated).getTime())) {
+          fixedLoan.dateCreated = new Date().toISOString();
+          needsFix = true;
+        }
+        
+        // Fix dateFulfilled if present and invalid
+        if (fixedLoan.dateFulfilled && isNaN(new Date(fixedLoan.dateFulfilled).getTime())) {
+          fixedLoan.dateFulfilled = new Date().toISOString();
+          needsFix = true;
+        }
+        
+        // Fix history entry dates - preserve all existing history entries
+        let historyNeedsUpdate = false;
+        if (fixedLoan.history && fixedLoan.history.length > 0) {
+          fixedLoan.history = fixedLoan.history.map(entry => {
+            if (!entry || !entry.date || isNaN(new Date(entry.date).getTime())) {
+              historyNeedsUpdate = true;
+              return { ...entry, date: new Date().toISOString() };
+            }
+            return entry;
+          });
+          if (historyNeedsUpdate) {
+            needsFix = true;
+          }
+        }
+        
+        // Only save if we actually need to fix something - but preserve history always
+        if (needsFix) {
+          // When updating, explicitly include history to preserve it
+          const updateData: any = {
+            dateCreated: fixedLoan.dateCreated,
+          };
+          if (fixedLoan.dateFulfilled !== undefined) {
+            updateData.dateFulfilled = fixedLoan.dateFulfilled;
+          }
+          // Always preserve history when updating
+          updateData.history = fixedLoan.history;
+          
+          StorageService.updateLoan(fixedLoan.id, updateData).catch(err => {
+            console.error('[LoansScreen] Failed to fix loan:', err);
+          });
+        }
+        
+        return fixedLoan;
+      });
 
-      console.log(`[LoansScreen] Loaded ${loadedLoans.length} loans:`,
-        loadedLoans.map(l => ({ id: l.id, status: l.status, description: l.description }))
+      console.log(`[LoansScreen] Loaded ${fixedLoans.length} loans (${fixedLoans.filter(l => !l.history || l.history.length === 0).length} need history fix):`,
+        fixedLoans.map(l => ({ 
+          id: l.id, 
+          status: l.status, 
+          description: l.description,
+          dateCreated: l.dateCreated,
+          historyCount: l.history?.length || 0,
+          hasHistory: !!(l.history && l.history.length > 0)
+        }))
       );
 
-      setLoans(loadedLoans);
+      // Debug: Log history for each loan
+      fixedLoans.forEach(loan => {
+        if (loan.history && loan.history.length > 0) {
+          console.log(`[LoansScreen] Loan ${loan.id} has ${loan.history.length} history entries:`, loan.history);
+        } else {
+          console.log(`[LoansScreen] Loan ${loan.id} has no history entries`);
+        }
+      });
+
+      setLoans(fixedLoans);
       setUsers(loadedUsers);
       setCurrentUserId(userId);
       setDefaultCurrency(currency);
@@ -250,23 +329,108 @@ const LoansScreen = () => {
   const LoanItem = ({ loan }: { loan: Loan }) => {
     const isGiven = loan.giver === 'Me';
     const otherParty = isGiven ? loan.receiver : loan.giver;
-    const loanDate = new Date(loan.dateCreated);
+    
+    // Fix date parsing - handle invalid or missing dates
+    const parseDate = (dateString: string | undefined): Date => {
+      if (!dateString) {
+        return new Date(); // Use current date if missing
+      }
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        console.warn('[LoansScreen] Invalid date string, using current date:', dateString);
+        return new Date(); // Use current date if invalid
+      }
+      return date;
+    };
+    
+    const loanDate = parseDate(loan.dateCreated);
     const loanCurrency = CurrencyService.getCurrencyByCode(loan.currency || defaultCurrency);
     const isHistoryExpanded = expandedHistoryId === loan.id;
-    const hasHistory = loan.history && loan.history.length > 0;
-    const sortedHistory = loan.history ? [...loan.history].sort((a, b) =>
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    ) : [];
+    
+    // Ensure history array exists and is properly initialized
+    const loanHistory = loan.history || [];
+    
+    // Be very lenient - accept any entry that exists (even if empty, might have other fields)
+    // Only filter out null/undefined entries
+    const validHistory = loanHistory.filter(entry => {
+      return entry !== null && entry !== undefined;
+    });
+    
+    const hasHistory = validHistory.length > 0;
+    
+    // Always log history for debugging
+    console.log(`[LoansScreen] Loan ${loan.id} history check:`, {
+      rawHistoryLength: loanHistory.length,
+      validHistoryLength: validHistory.length,
+      hasHistory,
+      historyIsArray: Array.isArray(loan.history),
+      sampleEntry: validHistory.length > 0 ? validHistory[0] : null,
+    });
+    
+    const sortedHistory = [...validHistory].sort((a, b) => {
+      const dateA = (a.date ? parseDate(a.date).getTime() : 0);
+      const dateB = (b.date ? parseDate(b.date).getTime() : 0);
+      return dateB - dateA;
+    });
 
-    const formatHistoryDate = (dateString: string) => {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+    const formatHistoryDate = (dateString: string | undefined) => {
+      try {
+        if (!dateString) return 'Date unavailable';
+        const date = parseDate(dateString);
+        // Check if date is valid
+        if (isNaN(date.getTime())) {
+          console.warn('[LoansScreen] Invalid date string:', dateString);
+          return 'Date unavailable';
+        }
+        return date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (error) {
+        console.error('[LoansScreen] Error formatting date:', dateString, error);
+        return 'Date unavailable';
+      }
+    };
+    
+    const formatLoanDate = () => {
+      try {
+        // If dateCreated is missing or invalid, fix it immediately
+        if (!loan.dateCreated || isNaN(new Date(loan.dateCreated).getTime())) {
+          console.warn('[LoansScreen] Invalid dateCreated, fixing:', loan.dateCreated);
+          // Fix the date in storage
+          const fixedDate = new Date().toISOString();
+          StorageService.updateLoan(loan.id, { dateCreated: fixedDate }).catch(err => {
+            console.error('[LoansScreen] Failed to fix date:', err);
+          });
+          return 'Date unavailable';
+        }
+        
+        // Try parsing the date
+        const parsedDate = parseDate(loan.dateCreated);
+        if (isNaN(parsedDate.getTime())) {
+          return 'Date unavailable';
+        }
+        
+        // Format the date with a fallback check
+        const formatted = parsedDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+        
+        // Double-check for "Invalid Date" string (some locales return this)
+        if (!formatted || formatted === 'Invalid Date' || formatted.includes('NaN')) {
+          return 'Date unavailable';
+        }
+        
+        return formatted;
+      } catch (error) {
+        console.error('[LoansScreen] Error formatting loan date:', error, loan.dateCreated);
+        return 'Date unavailable';
+      }
     };
 
     return (
@@ -282,9 +446,14 @@ const LoansScreen = () => {
                 {loan.description || (isGiven ? 'Money lent' : 'Money borrowed')}
               </Text>
               <Text style={styles.loanDate}>
-                {loanDate.toLocaleDateString()}
-                {loan.status === 'fulfilled' && loan.dateFulfilled &&
-                  ` • Paid ${new Date(loan.dateFulfilled).toLocaleDateString()}`}
+                {formatLoanDate()}
+                {loan.status === 'fulfilled' && loan.dateFulfilled && (() => {
+                  const paidDate = parseDate(loan.dateFulfilled);
+                  const paidDateText = !isNaN(paidDate.getTime())
+                    ? paidDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                    : 'Date unavailable';
+                  return ` • Paid ${paidDateText}`;
+                })()}
               </Text>
             </View>
           </View>
@@ -293,16 +462,15 @@ const LoansScreen = () => {
               {isGiven ? '-' : '+'}{loanCurrency.symbol}{loan.amount.toFixed(0)}
             </Text>
             <View style={styles.loanActions}>
-              {loan.status === 'pending' && (
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => {
-                    console.log('[LoansScreen] Edit button pressed for loan:', loan.id);
-                    handleEditLoan(loan);
-                  }}>
-                  <Text style={styles.editText}>Edit</Text>
-                </TouchableOpacity>
-              )}
+              {/* Always allow editing, regardless of status */}
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => {
+                  console.log('[LoansScreen] Edit button pressed for loan:', loan.id);
+                  handleEditLoan(loan);
+                }}>
+                <Text style={styles.editText}>Edit</Text>
+              </TouchableOpacity>
               {loan.status === 'pending' ? (
                 <TouchableOpacity
                   style={styles.markPaidButton}
@@ -325,7 +493,7 @@ const LoansScreen = () => {
           </View>
         </View>
 
-        {/* History Toggle Button */}
+        {/* History Toggle Button - Only show if there's history data */}
         {hasHistory && (
           <TouchableOpacity
             style={styles.historyToggle}
@@ -351,7 +519,9 @@ const LoansScreen = () => {
                   {index < sortedHistory.length - 1 && <View style={styles.historyLine} />}
                 </View>
                 <View style={styles.historyContent}>
-                  <Text style={styles.historyDate}>{formatHistoryDate(entry.date)}</Text>
+                  <Text style={styles.historyDate}>
+                    {entry.date ? formatHistoryDate(entry.date) : 'Date unavailable'}
+                  </Text>
                   {entry.amount !== undefined && entry.previousAmount !== undefined && (
                     <View style={styles.historyChange}>
                       <Text style={styles.historyLabel}>Amount:</Text>
@@ -364,9 +534,14 @@ const LoansScreen = () => {
                     <View style={styles.historyChange}>
                       <Text style={styles.historyLabel}>Description:</Text>
                       <Text style={styles.historyValue}>
-                        "{entry.previousDescription}" → "{entry.description}"
+                        "{entry.previousDescription || 'Empty'}" → "{entry.description || 'Empty'}"
                       </Text>
                     </View>
+                  )}
+                  {/* Show if entry has no visible changes but exists */}
+                  {entry.amount === undefined && entry.description === undefined && 
+                   entry.previousAmount === undefined && entry.previousDescription === undefined && (
+                    <Text style={styles.historyLabel}>History entry recorded</Text>
                   )}
                 </View>
               </View>
@@ -917,17 +1092,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   historyToggle: {
-    paddingVertical: 8,
-    paddingHorizontal: 0,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: '#E5E7EB',
     marginTop: 12,
     width: '100%',
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
   },
   historyToggleText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#6B7280',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   historyContainer: {
     paddingHorizontal: 0,
@@ -987,6 +1164,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#374151',
     fontWeight: '500',
+  },
+  historyEmptyText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    paddingVertical: 12,
+    textAlign: 'center',
   },
   emptyState: {
     alignItems: 'center',
