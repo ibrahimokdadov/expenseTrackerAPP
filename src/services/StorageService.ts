@@ -1,10 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Expense, Category, Subcategory, Loan, LoanHistoryEntry, User, ZTBalance, ZTPayment } from '../types';
+import { Expense, Category, Subcategory, Loan, LoanHistoryEntry, User, ZTBalance, ZTPayment, Income, IncomeCategory } from '../types';
 import GoogleSheetsService from './GoogleSheetsService';
 import GoogleAuthService from './GoogleAuthService';
 
 const EXPENSES_KEY = '@expenses';
 const CATEGORIES_KEY = '@categories';
+const INCOME_KEY = '@income';
+const INCOME_CATEGORIES_KEY = '@income_categories';
+const COMPARISON_INCOME_CATEGORIES_KEY = '@comparison_income_categories';
+const COMPARISON_EXPENSE_CATEGORIES_KEY = '@comparison_expense_categories';
 const LOANS_KEY = '@loans';
 const USERS_KEY = '@users';
 const CURRENT_USER_KEY = '@current_user';
@@ -39,6 +43,12 @@ export class StorageService {
         await this.saveCategories(categories);
         console.log('Added subcategories to Personal category');
       }
+    }
+
+    // Initialize income categories with predefined ones
+    const incomeCategories = await this.getIncomeCategories();
+    if (incomeCategories.length === 0) {
+      await this.initializeDefaultIncomeCategories();
     }
 
     // Initialize default user
@@ -96,6 +106,19 @@ export class StorageService {
 
     await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(defaultCategories));
     return defaultCategories;
+  }
+
+  static async initializeDefaultIncomeCategories() {
+    const defaultIncomeCategories: IncomeCategory[] = [
+      { id: 'salary', name: 'Salary', color: '#4ECDC4' },
+      { id: 'freelance', name: 'Freelance', color: '#45B7D1' },
+      { id: 'business', name: 'Business', color: '#96CEB4' },
+      { id: 'investment', name: 'Investment', color: '#FFEAA7' },
+      { id: 'other', name: 'Other', color: '#DDA0DD' },
+    ];
+
+    await AsyncStorage.setItem(INCOME_CATEGORIES_KEY, JSON.stringify(defaultIncomeCategories));
+    return defaultIncomeCategories;
   }
 
   // Bulk Save Methods
@@ -409,6 +432,89 @@ export class StorageService {
     }
   }
 
+  // Income Category Management
+  static async getIncomeCategories(): Promise<IncomeCategory[]> {
+    try {
+      const categoriesJson = await AsyncStorage.getItem(INCOME_CATEGORIES_KEY);
+      if (!categoriesJson) return [];
+      return JSON.parse(categoriesJson);
+    } catch (error) {
+      console.error('Error getting income categories:', error);
+      return [];
+    }
+  }
+
+  static async saveIncomeCategories(categories: IncomeCategory[]) {
+    try {
+      await AsyncStorage.setItem(INCOME_CATEGORIES_KEY, JSON.stringify(categories));
+    } catch (error) {
+      console.error('Error saving income categories:', error);
+      throw error;
+    }
+  }
+
+  static async saveIncomeCategory(category: IncomeCategory) {
+    try {
+      const categories = await this.getIncomeCategories();
+      const existingIndex = categories.findIndex(c => c.id === category.id);
+      if (existingIndex !== -1) {
+        categories[existingIndex] = category;
+      } else {
+        categories.push(category);
+      }
+      await this.saveIncomeCategories(categories);
+
+      // Sync with Google Sheets if auto-backup is enabled
+      if (this.isAutoBackupEnabled()) {
+        this.scheduleBackup();
+      }
+
+      return category;
+    } catch (error) {
+      console.error('Error saving income category:', error);
+      throw error;
+    }
+  }
+
+  static async updateIncomeCategory(category: IncomeCategory) {
+    try {
+      const categories = await this.getIncomeCategories();
+      const index = categories.findIndex(c => c.id === category.id);
+
+      if (index !== -1) {
+        categories[index] = category;
+        await this.saveIncomeCategories(categories);
+
+        // Sync with Google Sheets if auto-backup is enabled
+        if (this.isAutoBackupEnabled()) {
+          this.scheduleBackup();
+        }
+
+        return category;
+      }
+      throw new Error('Income category not found');
+    } catch (error) {
+      console.error('Error updating income category:', error);
+      throw error;
+    }
+  }
+
+  static async deleteIncomeCategory(categoryId: string) {
+    try {
+      const categories = await this.getIncomeCategories();
+      const filtered = categories.filter(c => c.id !== categoryId);
+      await this.saveIncomeCategories(filtered);
+
+      // Sync with Google Sheets if auto-backup is enabled
+      if (this.isAutoBackupEnabled()) {
+        this.scheduleBackup();
+      }
+    } catch (error) {
+      console.error('Error deleting income category:', error);
+      throw error;
+    }
+  }
+
   // Loan Management
   static async saveLoan(loan: Omit<Loan, 'id' | 'dateCreated' | 'localId' | 'syncStatus'>) {
     try {
@@ -583,6 +689,200 @@ export class StorageService {
     } catch (error) {
       console.error('Error deleting loan:', error);
       throw error;
+    }
+  }
+
+  // Income Management
+  static async saveIncome(income: Omit<Income, 'id' | 'timestamp' | 'localId' | 'syncStatus'>) {
+    try {
+      const incomes = await this.getIncome();
+      const newIncome: Income = {
+        ...income,
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+        date: income.date || new Date().toISOString().split('T')[0],
+        localId: `income_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        syncStatus: 'pending',
+      };
+      incomes.push(newIncome);
+      await AsyncStorage.setItem(INCOME_KEY, JSON.stringify(incomes));
+
+      // Trigger auto backup
+      this.scheduleBackup();
+
+      return newIncome;
+    } catch (error) {
+      console.error('Error saving income:', error);
+      throw error;
+    }
+  }
+
+  static async getIncome(): Promise<Income[]> {
+    try {
+      const incomeJson = await AsyncStorage.getItem(INCOME_KEY);
+      return incomeJson ? JSON.parse(incomeJson) : [];
+    } catch (error) {
+      console.error('Error getting income:', error);
+      return [];
+    }
+  }
+
+  static async getIncomeByMonth(year: number, month: number): Promise<Income[]> {
+    try {
+      const allIncome = await this.getIncome();
+      return allIncome.filter(income => {
+        const incomeDate = new Date(income.date);
+        return incomeDate.getFullYear() === year && incomeDate.getMonth() === month;
+      });
+    } catch (error) {
+      console.error('Error getting income by month:', error);
+      return [];
+    }
+  }
+
+  static async getIncomeByYear(year: number): Promise<Income[]> {
+    try {
+      const allIncome = await this.getIncome();
+      return allIncome.filter(income => {
+        const incomeDate = new Date(income.date);
+        return incomeDate.getFullYear() === year;
+      });
+    } catch (error) {
+      console.error('Error getting income by year:', error);
+      return [];
+    }
+  }
+
+  static async getIncomeByCategory(categoryId: string, year?: number, month?: number): Promise<Income[]> {
+    try {
+      let income = await this.getIncome();
+      
+      // Filter by category
+      income = income.filter(i => i.category === categoryId);
+      
+      // Filter by year if provided
+      if (year !== undefined) {
+        income = income.filter(i => {
+          const incomeDate = new Date(i.date);
+          return incomeDate.getFullYear() === year;
+        });
+      }
+      
+      // Filter by month if provided
+      if (month !== undefined) {
+        income = income.filter(i => {
+          const incomeDate = new Date(i.date);
+          return incomeDate.getMonth() === month;
+        });
+      }
+      
+      return income;
+    } catch (error) {
+      console.error('Error getting income by category:', error);
+      return [];
+    }
+  }
+
+  static async getMonthlyIncomeTotal(year: number, month: number, categoryIds?: string[]): Promise<number> {
+    try {
+      let income = await this.getIncomeByMonth(year, month);
+      
+      // Filter by categories if provided
+      if (categoryIds && categoryIds.length > 0) {
+        income = income.filter(i => categoryIds.includes(i.category));
+      }
+      
+      return income.reduce((sum, i) => sum + i.amount, 0);
+    } catch (error) {
+      console.error('Error getting monthly income total:', error);
+      return 0;
+    }
+  }
+
+  static async getYearlyIncomeTotal(year: number, categoryIds?: string[]): Promise<number> {
+    try {
+      let income = await this.getIncomeByYear(year);
+      
+      // Filter by categories if provided
+      if (categoryIds && categoryIds.length > 0) {
+        income = income.filter(i => categoryIds.includes(i.category));
+      }
+      
+      return income.reduce((sum, i) => sum + i.amount, 0);
+    } catch (error) {
+      console.error('Error getting yearly income total:', error);
+      return 0;
+    }
+  }
+
+  static async updateIncome(id: string, updates: Partial<Income>) {
+    try {
+      const incomes = await this.getIncome();
+      const index = incomes.findIndex(i => i.id === id);
+      if (index !== -1) {
+        incomes[index] = { ...incomes[index], ...updates, syncStatus: 'pending' };
+        await AsyncStorage.setItem(INCOME_KEY, JSON.stringify(incomes));
+        this.scheduleBackup();
+        return incomes[index];
+      }
+      throw new Error('Income not found');
+    } catch (error) {
+      console.error('Error updating income:', error);
+      throw error;
+    }
+  }
+
+  static async deleteIncome(id: string) {
+    try {
+      const incomes = await this.getIncome();
+      const filtered = incomes.filter(i => i.id !== id);
+      await AsyncStorage.setItem(INCOME_KEY, JSON.stringify(filtered));
+
+      // Track deletion for sync
+      await this.trackDeletion('income', id);
+      this.scheduleBackup();
+    } catch (error) {
+      console.error('Error deleting income:', error);
+      throw error;
+    }
+  }
+
+  // Comparison Preferences
+  static async saveComparisonIncomeCategories(categoryIds: string[]) {
+    try {
+      await AsyncStorage.setItem(COMPARISON_INCOME_CATEGORIES_KEY, JSON.stringify(categoryIds));
+    } catch (error) {
+      console.error('Error saving comparison income categories:', error);
+      throw error;
+    }
+  }
+
+  static async getComparisonIncomeCategories(): Promise<string[]> {
+    try {
+      const categoriesJson = await AsyncStorage.getItem(COMPARISON_INCOME_CATEGORIES_KEY);
+      return categoriesJson ? JSON.parse(categoriesJson) : [];
+    } catch (error) {
+      console.error('Error getting comparison income categories:', error);
+      return [];
+    }
+  }
+
+  static async saveComparisonExpenseCategories(categoryIds: string[]) {
+    try {
+      await AsyncStorage.setItem(COMPARISON_EXPENSE_CATEGORIES_KEY, JSON.stringify(categoryIds));
+    } catch (error) {
+      console.error('Error saving comparison expense categories:', error);
+      throw error;
+    }
+  }
+
+  static async getComparisonExpenseCategories(): Promise<string[]> {
+    try {
+      const categoriesJson = await AsyncStorage.getItem(COMPARISON_EXPENSE_CATEGORIES_KEY);
+      return categoriesJson ? JSON.parse(categoriesJson) : [];
+    } catch (error) {
+      console.error('Error getting comparison expense categories:', error);
+      return [];
     }
   }
 

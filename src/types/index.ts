@@ -109,3 +109,23 @@ export interface ZTPayment {
   purpose: string;
   date: string;
 }
+
+// Income Tracking Types
+export interface IncomeCategory {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string;
+}
+
+export interface Income {
+  id: string;
+  amount: number;
+  currency?: Currency;
+  description: string;
+  category: string;
+  date: string;
+  timestamp: string;
+  localId: string;
+  syncStatus: 'pending' | 'synced' | 'conflict';
+}

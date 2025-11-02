@@ -42,6 +42,8 @@ const LoansScreen = () => {
   // Edit form states
   const [editAmount, setEditAmount] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editGiver, setEditGiver] = useState('');
+  const [editReceiver, setEditReceiver] = useState('');
 
   const loadData = async () => {
     try {
@@ -194,6 +196,8 @@ const LoansScreen = () => {
     setSelectedLoan(loan);
     setEditAmount(loan.amount.toString());
     setEditDescription(loan.description || '');
+    setEditGiver(loan.giver || '');
+    setEditReceiver(loan.receiver || '');
     setEditModalVisible(true);
   };
 
@@ -205,6 +209,16 @@ const LoansScreen = () => {
       return;
     }
 
+    if (!editGiver?.trim() || !editReceiver?.trim()) {
+      Alert.alert('Error', 'Please enter both giver and receiver names');
+      return;
+    }
+
+    if (editGiver.trim() === editReceiver.trim()) {
+      Alert.alert('Error', 'Giver and receiver cannot be the same');
+      return;
+    }
+
     try {
       const updates: Partial<Loan> = {};
       if (parseFloat(editAmount) !== selectedLoan.amount) {
@@ -212,6 +226,12 @@ const LoansScreen = () => {
       }
       if (editDescription !== selectedLoan.description) {
         updates.description = editDescription;
+      }
+      if (editGiver.trim() !== selectedLoan.giver) {
+        updates.giver = editGiver.trim();
+      }
+      if (editReceiver.trim() !== selectedLoan.receiver) {
+        updates.receiver = editReceiver.trim();
       }
 
       if (Object.keys(updates).length > 0) {
@@ -233,6 +253,8 @@ const LoansScreen = () => {
       setSelectedLoan(null);
       setEditAmount('');
       setEditDescription('');
+      setEditGiver('');
+      setEditReceiver('');
     } catch (error) {
       console.error('Error updating loan:', error);
       Alert.alert('Error', 'Failed to update loan');
@@ -328,7 +350,8 @@ const LoansScreen = () => {
 
   const LoanItem = ({ loan }: { loan: Loan }) => {
     const isGiven = loan.giver === 'Me';
-    const otherParty = isGiven ? loan.receiver : loan.giver;
+    const otherPartyRaw = isGiven ? loan.receiver : loan.giver;
+    const otherParty = otherPartyRaw?.trim() || 'Unknown';
     
     // Fix date parsing - handle invalid or missing dates
     const parseDate = (dateString: string | undefined): Date => {
@@ -847,12 +870,36 @@ const LoansScreen = () => {
                 setSelectedLoan(null);
                 setEditAmount('');
                 setEditDescription('');
+                setEditGiver('');
+                setEditReceiver('');
               }}>
                 <Text style={styles.closeButton}>✕</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Giver</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editGiver}
+                  onChangeText={setEditGiver}
+                  placeholder="Enter giver's name"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Receiver</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editReceiver}
+                  onChangeText={setEditReceiver}
+                  placeholder="Enter receiver's name"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Amount</Text>
                 <View style={styles.amountInput}>

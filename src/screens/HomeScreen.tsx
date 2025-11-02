@@ -500,6 +500,18 @@ const HomeScreen = ({navigation}: any) => {
         <View style={styles.statsRow}>
           <TouchableOpacity
             style={styles.statCard}
+            onPress={() => navigation.navigate('Income')}>
+            <LinearGradient
+              colors={['#ffffff', '#f0fff4']}
+              style={styles.statGradient}>
+              <Text style={styles.statIcon}>💵</Text>
+              <Text style={styles.statLabel}>Income</Text>
+              <Text style={styles.statValue}>Track</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.statCard}
             onPress={() => navigation.navigate('ZT')}>
             <LinearGradient
               colors={['#ffffff', '#f5f5ff']}
@@ -509,7 +521,9 @@ const HomeScreen = ({navigation}: any) => {
               <Text style={styles.statValue}>Tracker</Text>
             </LinearGradient>
           </TouchableOpacity>
+        </View>
 
+        <View style={styles.statsRow}>
           <TouchableOpacity
             style={styles.statCard}
             onPress={() => navigation.navigate('Settings')}>
@@ -521,6 +535,8 @@ const HomeScreen = ({navigation}: any) => {
               <Text style={styles.statValue}>Configure</Text>
             </LinearGradient>
           </TouchableOpacity>
+
+          <View style={styles.statCard} />
         </View>
 
         {pendingLoans > 0 && (

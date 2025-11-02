@@ -1,4 +1,4 @@
-import { Expense, ConflictItem, Loan, LoanHistoryEntry, Category, ZTBalance, ZTPayment } from '../types';
+import { Expense, ConflictItem, Loan, LoanHistoryEntry, Category, ZTBalance, ZTPayment, Income, IncomeCategory } from '../types';
 import GoogleAuthService from './GoogleAuthService';
 import { StorageService } from './StorageService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -204,6 +204,26 @@ export class GoogleSheetsService {
                 },
               },
             },
+            {
+              properties: {
+                sheetId: 7,
+                title: 'Income',
+                gridProperties: {
+                  rowCount: 1000,
+                  columnCount: 8,
+                },
+              },
+            },
+            {
+              properties: {
+                sheetId: 8,
+                title: 'IncomeCategories',
+                gridProperties: {
+                  rowCount: 100,
+                  columnCount: 4,
+                },
+              },
+            },
           ],
         }),
       });
@@ -381,6 +401,56 @@ export class GoogleSheetsService {
                 values: [
                   { userEnteredValue: { stringValue: 'LastSync' } },
                   { userEnteredValue: { stringValue: new Date().toISOString() } },
+                ],
+              },
+            ],
+            fields: 'userEnteredValue',
+          },
+        },
+        // Income headers
+        {
+          updateCells: {
+            range: {
+              sheetId: 7,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 8,
+            },
+            rows: [
+              {
+                values: [
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Date' } },
+                  { userEnteredValue: { stringValue: 'Amount' } },
+                  { userEnteredValue: { stringValue: 'Category' } },
+                  { userEnteredValue: { stringValue: 'Description' } },
+                  { userEnteredValue: { stringValue: 'Currency' } },
+                  { userEnteredValue: { stringValue: 'Timestamp' } },
+                  { userEnteredValue: { stringValue: 'SyncStatus' } },
+                ],
+              },
+            ],
+            fields: 'userEnteredValue',
+          },
+        },
+        // IncomeCategories headers
+        {
+          updateCells: {
+            range: {
+              sheetId: 8,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 4,
+            },
+            rows: [
+              {
+                values: [
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Name' } },
+                  { userEnteredValue: { stringValue: 'Icon' } },
+                  { userEnteredValue: { stringValue: 'Color' } },
                 ],
               },
             ],
@@ -743,6 +813,128 @@ export class GoogleSheetsService {
     }
   }
 
+  static async syncIncome(income: Income[]): Promise<boolean> {
+    try {
+      if (!this.sheetInfo) {
+        await this.initialize();
+        if (!this.sheetInfo) throw new Error('No sheet configured');
+      }
+
+      // Ensure Income sheet exists (for existing spreadsheets)
+      await this.ensureIncomeSheetsExist();
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) throw new Error('No access token');
+
+      // Clear existing data
+      await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Income!A2:H:clear`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      // Only write data if we have income
+      if (income.length > 0) {
+        // Prepare income data
+        const values = income.map(item => [
+          item.id || item.localId || '',
+          item.date || new Date().toISOString().split('T')[0],
+          (item.amount || 0).toString(),
+          item.category || '',
+          item.description || '',
+          item.currency || 'DZD',
+          item.timestamp || new Date().toISOString(),
+          'synced',
+        ]);
+
+        // Write new data
+        const updateResponse = await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/Income!A2:H?valueInputOption=USER_ENTERED`,
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              values: values,
+            }),
+          }
+        );
+
+        if (!updateResponse.ok) {
+          const errorText = await updateResponse.text();
+          console.error('[syncIncome] Update failed:', errorText);
+          throw new Error('Failed to update income');
+        }
+
+        console.log('[syncIncome] Successfully synced income');
+      } else {
+        console.log('[syncIncome] No income to sync');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('[syncIncome] Failed to sync income:', error);
+      throw error;
+    }
+  }
+
+  static async syncIncomeCategories(categories: IncomeCategory[]): Promise<boolean> {
+    try {
+      if (!this.sheetInfo) {
+        await this.initialize();
+        if (!this.sheetInfo) throw new Error('No sheet configured');
+      }
+
+      // Ensure IncomeCategories sheet exists (for existing spreadsheets)
+      await this.ensureIncomeSheetsExist();
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) throw new Error('No access token');
+
+      const values = categories.map(cat => [
+        cat.id,
+        cat.name,
+        cat.icon || '',
+        cat.color || '',
+      ]);
+
+      await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/IncomeCategories!A2:D:clear`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const response = await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}/values/IncomeCategories!A2:D?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            values: values,
+          }),
+        }
+      );
+
+      return response.ok;
+    } catch (error) {
+      console.error('Failed to sync income categories:', error);
+      return false;
+    }
+  }
+
   static async syncZTBalances(balances: ZTBalance[]): Promise<boolean> {
     try {
       if (!this.sheetInfo) {
@@ -1025,6 +1217,19 @@ export class GoogleSheetsService {
       if (deletedCount > 0) {
         console.log(`[Sync] Removed ${deletedCount} deleted items from sheets`);
         result.message = `Sync completed. Removed ${deletedCount} deleted items.`;
+      }
+
+      // Sync income and income categories (one-way sync for now)
+      console.log('[Sync] Syncing income data...');
+      try {
+        const income = await StorageService.getIncome();
+        const incomeCategories = await StorageService.getIncomeCategories();
+        await this.syncIncome(income);
+        await this.syncIncomeCategories(incomeCategories);
+        console.log(`[Sync] Synced ${income.length} income entries and ${incomeCategories.length} income categories`);
+      } catch (error) {
+        console.error('[Sync] Failed to sync income:', error);
+        // Don't fail the entire sync if income sync fails
       }
 
       // Update last sync time
@@ -2215,6 +2420,189 @@ export class GoogleSheetsService {
       }
     } catch (error) {
       console.error('[ensureZTSheetsExist] Failed to ensure ZT sheets exist:', error);
+    }
+  }
+
+  private static async ensureIncomeSheetsExist(): Promise<void> {
+    try {
+      if (!this.sheetInfo) return;
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) return;
+
+      // Get current sheets in the spreadsheet
+      const response = await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}?fields=sheets(properties(title,sheetId))`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const existingSheets = data.sheets.map((s: any) => s.properties.title);
+
+      console.log('[ensureIncomeSheetsExist] Existing sheets:', existingSheets);
+
+      const requests: any[] = [];
+
+      // Check if Income sheet exists
+      if (!existingSheets.includes('Income')) {
+        console.log('[ensureIncomeSheetsExist] Creating Income sheet');
+        requests.push({
+          addSheet: {
+            properties: {
+              title: 'Income',
+              gridProperties: {
+                rowCount: 1000,
+                columnCount: 8,
+              },
+            },
+          },
+        });
+      }
+
+      // Check if IncomeCategories sheet exists
+      if (!existingSheets.includes('IncomeCategories')) {
+        console.log('[ensureIncomeSheetsExist] Creating IncomeCategories sheet');
+        requests.push({
+          addSheet: {
+            properties: {
+              title: 'IncomeCategories',
+              gridProperties: {
+                rowCount: 100,
+                columnCount: 4,
+              },
+            },
+          },
+        });
+      }
+
+      // If we have sheets to add, send the batch update request
+      if (requests.length > 0) {
+        const batchUpdateResponse = await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}:batchUpdate`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ requests }),
+          }
+        );
+
+        if (batchUpdateResponse.ok) {
+          console.log('[ensureIncomeSheetsExist] Successfully created missing Income sheets');
+
+          // Now add headers to the new sheets
+          await this.setupIncomeSheetHeaders();
+        } else {
+          const errorText = await batchUpdateResponse.text();
+          console.error('[ensureIncomeSheetsExist] Failed to create sheets:', errorText);
+        }
+      }
+    } catch (error) {
+      console.error('[ensureIncomeSheetsExist] Failed to ensure Income sheets exist:', error);
+    }
+  }
+
+  private static async setupIncomeSheetHeaders(): Promise<void> {
+    try {
+      if (!this.sheetInfo) return;
+
+      const accessToken = await GoogleAuthService.getAccessToken();
+      if (!accessToken) return;
+
+      // Get sheet IDs
+      const response = await fetch(
+        `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}?fields=sheets(properties(title,sheetId))`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const incomeSheet = data.sheets.find((s: any) => s.properties.title === 'Income');
+      const incomeCategoriesSheet = data.sheets.find((s: any) => s.properties.title === 'IncomeCategories');
+
+      const requests: any[] = [];
+
+      // Add Income headers
+      if (incomeSheet) {
+        requests.push({
+          updateCells: {
+            range: {
+              sheetId: incomeSheet.properties.sheetId,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 8,
+            },
+            rows: [
+              {
+                values: [
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Date' } },
+                  { userEnteredValue: { stringValue: 'Amount' } },
+                  { userEnteredValue: { stringValue: 'Category' } },
+                  { userEnteredValue: { stringValue: 'Description' } },
+                  { userEnteredValue: { stringValue: 'Currency' } },
+                  { userEnteredValue: { stringValue: 'Timestamp' } },
+                  { userEnteredValue: { stringValue: 'SyncStatus' } },
+                ],
+              },
+            ],
+            fields: 'userEnteredValue',
+          },
+        });
+      }
+
+      // Add IncomeCategories headers
+      if (incomeCategoriesSheet) {
+        requests.push({
+          updateCells: {
+            range: {
+              sheetId: incomeCategoriesSheet.properties.sheetId,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 4,
+            },
+            rows: [
+              {
+                values: [
+                  { userEnteredValue: { stringValue: 'ID' } },
+                  { userEnteredValue: { stringValue: 'Name' } },
+                  { userEnteredValue: { stringValue: 'Icon' } },
+                  { userEnteredValue: { stringValue: 'Color' } },
+                ],
+              },
+            ],
+            fields: 'userEnteredValue',
+          },
+        });
+      }
+
+      if (requests.length > 0) {
+        await fetch(
+          `${SHEETS_API_BASE_URL}/${this.sheetInfo.spreadsheetId}:batchUpdate`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ requests }),
+          }
+        );
+        console.log('[setupIncomeSheetHeaders] Successfully added Income sheet headers');
+      }
+    } catch (error) {
+      console.error('[setupIncomeSheetHeaders] Failed to setup Income sheet headers:', error);
     }
   }
 
